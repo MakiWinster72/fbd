@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+node_modules/
+.next/
+*.tsbuildinfo
+apps/web/.env.local
+apps/web/artifacts/
+
+# Generated ingestion artifacts
+data/normalized/*
+data/artifacts/*
+data/uploads/*
+data/quarantine/*
+data/app.db*
+
+# Private source materials are kept outside tracked source directories
+private-documents/
+data/source/
+*.rar
+
+# Keep the validation report, ignore generated binary/result artifacts
+data/validation/*/*
+!data/validation/README.md
+
+.pi/tasks/
