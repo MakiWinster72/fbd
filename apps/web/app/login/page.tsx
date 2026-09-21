@@ -32,7 +32,7 @@ export default function LoginPage() {
     <main className="login-shell">
       <section className="login-card">
         <div className="login-seal" aria-hidden="true">知</div>
-        <p className="section-kicker">KNOWLEDGE BASE</p>
+        <p className="section-kicker">PRIVATE KNOWLEDGE ARCHIVE</p>
         <h1>Knowledge RAG</h1>
         <p className="login-intro">使用管理员分配的账号登录。模型凭据和知识库配置仅在管理员后台维护。</p>
         <form className="login-form" onSubmit={onSubmit}>

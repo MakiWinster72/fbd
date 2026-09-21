@@ -16,13 +16,14 @@ type ServiceState = "checking" | "online" | "degraded" | "offline";
 const INITIAL_MESSAGE: Message = {
   id: "welcome",
   role: "assistant",
-  content: "欢迎使用知识库，请输入需要检索的问题。",
+  content:
+    "请询问已入库文档中的事实、制度或流程。我会严格依据资料回答，并标出原始文件和页码。",
 };
 
 const QUICK_QUESTIONS = [
-  "总结当前资料。",
-  "列出关键时间。",
-  "说明主要流程。",
+  "这批资料的核心内容是什么？",
+  "文档中有哪些重要时间节点？",
+  "相关制度规定了哪些流程？",
 ];
 
 function pageLabel(source: Source) {
@@ -231,7 +232,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
         <div className="brand-block">
           <div className="brand-seal" aria-hidden="true">知</div>
           <div>
-            <p className="eyebrow">KNOWLEDGE RAG</p>
+            <p className="eyebrow">KNOWLEDGE RAG · PRIVATE ARCHIVE</p>
             <h1>Knowledge RAG</h1>
           </div>
         </div>

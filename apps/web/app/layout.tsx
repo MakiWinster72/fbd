@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Knowledge RAG",
-  description: "私有知识库问答系统",
+  description: "支持文件与页码引用的私有知识库问答工作台",
 };
 
 export const viewport: Viewport = {
