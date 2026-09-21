@@ -7,6 +7,8 @@ import socket
 import sys
 from pathlib import Path
 
+import uvicorn
+
 from knowledge_rag.admin_store import AdminStore
 from knowledge_rag.config import Settings
 from knowledge_rag.pipeline import IngestionPipeline
@@ -27,6 +29,11 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--mineru-content-list", type=Path)
 
     subcommands.add_parser("health", help="check Ollama, MinerU and Milvus TCP ports")
+
+    serve = subcommands.add_parser("serve", help="start the Knowledge RAG API server")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8080)
+    serve.add_argument("--reload", action="store_true", help="reload when source files change")
 
     create_admin = subcommands.add_parser("create-admin", help="create an administrator account")
     create_admin.add_argument("username")
@@ -58,6 +65,14 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "health":
         return run_health()
+    if args.command == "serve":
+        uvicorn.run(
+            "knowledge_rag.api:app",
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+        )
+        return 0
 
     settings = Settings.from_env()
     if args.command == "create-admin":
