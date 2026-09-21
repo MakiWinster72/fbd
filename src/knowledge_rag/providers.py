@@ -41,7 +41,13 @@ class OpenAICompatibleClient:
         self.model = profile.model_name
         self.options = profile.options
         self.vector_dim = profile.vector_dim
-        self._opener = urllib.request.build_opener()
+        hostname = urlsplit(self.base_url).hostname or ""
+        try:
+            is_loopback = ipaddress.ip_address(hostname).is_loopback
+        except ValueError:
+            is_loopback = hostname.lower() == "localhost"
+        # Never route a local model service through HTTP(S)_PROXY.
+        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({})) if is_loopback else urllib.request.build_opener()
 
     def _post(self, path: str, payload: dict[str, Any], timeout: int = 180) -> dict[str, Any]:
         headers = {"Content-Type": "application/json"}
