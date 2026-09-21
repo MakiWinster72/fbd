@@ -52,7 +52,7 @@ class ChatResult:
     sources: tuple[RetrievedSource, ...]
 
 
-SYSTEM_PROMPT = """你是知识库助手。
+SYSTEM_PROMPT = """你是私有文档知识库助手。
 必须严格遵守以下规则：
 1. 只能依据用户消息中提供的“检索证据”回答，不得使用外部知识补充事实。
 2. 每个事实结论后使用【1】、【2】格式标注对应证据编号。

@@ -112,7 +112,7 @@ class AdminStore:
                     KnowledgeBaseRecord(
                         id="default",
                         name="默认知识库",
-                        description="默认私有资料库",
+                        description="由管理员维护的私有文档知识库",
                         active=True,
                         created_at=now,
                         updated_at=now,
