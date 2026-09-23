@@ -199,7 +199,7 @@ export default function AdminModelsPage() {
     <main className="admin-shell">
       <header className="admin-header">
         <div><p className="section-kicker">ADMIN CONTROL PLANE</p><h1>模型配置中心</h1><p>模型密钥仅保存在后端，普通用户无法查看或选择模型。</p></div>
-        <nav><a href="/">返回知识库</a><a href="/admin/users">用户管理</a><button type="button" onClick={() => setShowCreate((value) => !value)}>{showCreate ? "取消新增" : "新增模型配置"}</button></nav>
+        <nav><a href="/">返回知识库</a><a href="/admin/documents">文件导入</a><a href="/admin/users">用户管理</a><button type="button" onClick={() => setShowCreate((value) => !value)}>{showCreate ? "取消新增" : "新增模型配置"}</button></nav>
       </header>
 
       {error ? <p className="admin-error" role="alert">{error}</p> : null}

@@ -144,7 +144,7 @@ export default function AdminUsersPage() {
     <main className="admin-shell">
       <header className="admin-header">
         <div><p className="section-kicker">IDENTITY & ACCESS</p><h1>用户与知识库权限</h1><p>普通用户只能访问管理员明确授权的知识库。</p></div>
-        <nav><a href="/">返回知识库</a><a href="/admin/models">模型配置</a><button type="button" onClick={() => setShowCreate((value) => !value)}>{showCreate ? "取消新增" : "新增用户"}</button></nav>
+        <nav><a href="/">返回知识库</a><a href="/admin/documents">文件导入</a><a href="/admin/models">模型配置</a><button type="button" onClick={() => setShowCreate((value) => !value)}>{showCreate ? "取消新增" : "新增用户"}</button></nav>
       </header>
 
       {error ? <p className="admin-error" role="alert">{error}</p> : null}
