@@ -1,7 +1,7 @@
 "use client";
 
 import { DragEvent, useEffect, useRef, useState } from "react";
-import { getCurrentUser, getMineruStatus, listAdminKnowledgeBases, type KnowledgeBase } from "@/lib/api";
+import { getCurrentUser, getMineruStatus, listAdminKnowledgeBases, listModelProfiles, type KnowledgeBase, type ModelProfile } from "@/lib/api";
 
 type IntakeStatus = "ready" | "blocked";
 
@@ -55,6 +55,8 @@ export default function AdminDocumentsPage() {
   const [reviewed, setReviewed] = useState(false);
   const [selectionNotice, setSelectionNotice] = useState("");
   const [mineruStatus, setMineruStatus] = useState<"checking" | "reachable" | "offline">("checking");
+  const [embeddingProfile, setEmbeddingProfile] = useState<ModelProfile | null>(null);
+  const [embeddingError, setEmbeddingError] = useState("");
 
   useEffect(() => {
     getCurrentUser().then(async (user) => {
@@ -65,6 +67,7 @@ export default function AdminDocumentsPage() {
       setKnowledgeBaseId(bases[0]?.id ?? "");
       setReady(true);
       getMineruStatus().then((status) => setMineruStatus(status.reachable ? "reachable" : "offline")).catch(() => setMineruStatus("offline"));
+      listModelProfiles().then((profiles) => setEmbeddingProfile(profiles.find((profile) => profile.purpose === "embedding" && profile.is_active) ?? null)).catch(() => setEmbeddingError("无法读取 Embedding 配置，请检查后台接口。"));
     }).catch((reason) => setError(reason instanceof Error ? reason.message : "加载失败"));
   }, []);
 
@@ -188,6 +191,7 @@ export default function AdminDocumentsPage() {
           <section className="intake-config-card">
             <p className="section-kicker">IMPORT SETTINGS</p>
             <h2>处理设置</h2>
+            <div className="intake-embedding-note"><strong>当前 Embedding</strong><span>{embeddingError || (embeddingProfile ? `${embeddingProfile.name} · ${embeddingProfile.model_name}${embeddingProfile.vector_dim ? ` · ${embeddingProfile.vector_dim} 维` : ""}` : "未启用 Embedding 模型")}</span><a href="/admin/models">查看模型配置</a></div>
             <label><span>目标知识库</span><select value={knowledgeBaseId} onChange={(event) => setKnowledgeBaseId(event.target.value)}>{knowledgeBases.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
             <label><span>PDF 解析方式</span><select value={ocrMode} onChange={(event) => setOcrMode(event.target.value)}><option value="auto">自动判断</option><option value="force">强制 OCR</option><option value="native">仅使用文本层</option></select><small>自动模式优先版面解析，空页回退到 PDF 文本层。</small></label>
             <label><span>重复文件</span><select value={duplicateMode} onChange={(event) => setDuplicateMode(event.target.value)}><option value="skip">跳过相同 SHA-256</option><option value="replace">重新解析并替换</option></select></label>

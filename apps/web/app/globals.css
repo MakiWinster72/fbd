@@ -741,6 +741,10 @@
   .intake-sidebar { position: sticky; top: 18px; display: grid; gap: 12px; }
   .intake-config-card { padding: 20px; display: grid; gap: 15px; }
   .intake-config-card h2 { margin-top: -10px; }
+  .intake-embedding-note { padding: 12px; display: grid; gap: 6px; background: #edf5f8; border-left: 3px solid var(--blueprint); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+  .intake-embedding-note strong { color: var(--archive-blue); }
+  .intake-embedding-note span { color: var(--graphite); }
+  .intake-embedding-note a { color: var(--blueprint-dark); }
   .intake-config-card label { display: grid; gap: 7px; color: var(--graphite); font-size: 11px; font-weight: 700; }
   .intake-config-card select { width: 100%; min-height: 40px; padding: 8px 10px; color: var(--archive-blue); background: white; border: 1px solid var(--line-strong); border-radius: 0; font: 12px var(--sans); }
   .intake-config-card small { color: var(--muted); font-size: 10px; font-weight: 400; line-height: 1.5; }
