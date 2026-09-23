@@ -50,6 +50,7 @@ export default function AdminDocumentsPage() {
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
   const [reviewed, setReviewed] = useState(false);
+  const [selectionNotice, setSelectionNotice] = useState("");
 
   useEffect(() => {
     getCurrentUser().then(async (user) => {
@@ -63,12 +64,17 @@ export default function AdminDocumentsPage() {
   }, []);
 
   function addFiles(selected: FileList | File[]) {
+    const chosen = Array.from(selected);
+    if (!chosen.length) return;
     setReviewed(false);
-    setFiles((current) => {
-      const known = new Set(current.map((item) => item.id));
-      const additions = Array.from(selected).map(classify).filter((item) => !known.has(item.id));
-      return [...current, ...additions];
+    const known = new Set(files.map((item) => item.id));
+    const additions = chosen.map(classify).filter((item) => {
+      if (known.has(item.id)) return false;
+      known.add(item.id);
+      return true;
     });
+    setSelectionNotice(`已选择 ${additions.length} 个文件${chosen.length > additions.length ? `，跳过 ${chosen.length - additions.length} 个重复项` : ""}。文件仅在本地清单中，尚未上传。`);
+    setFiles((current) => [...current, ...additions]);
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
@@ -113,6 +119,7 @@ export default function AdminDocumentsPage() {
               <p>支持多选；浏览器只读取文件名称和大小，尚未上传。</p>
             </div>
 
+            {selectionNotice ? <p className="intake-selection-notice" role="status">{selectionNotice}</p> : null}
             <div
               className={`intake-dropzone${dragging ? " dragging" : ""}`}
               onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
@@ -141,7 +148,7 @@ export default function AdminDocumentsPage() {
           <section className="intake-panel intake-queue-panel">
             <div className="intake-panel-heading">
               <div><p className="section-kicker">02 / INTAKE MANIFEST</p><h2>导入清单 · {String(files.length).padStart(2, "0")}</h2></div>
-              {files.length ? <button className="intake-text-button" type="button" onClick={() => { setFiles([]); setReviewed(false); }}>清空清单</button> : null}
+              {files.length ? <button className="intake-text-button" type="button" onClick={() => { setFiles([]); setReviewed(false); setSelectionNotice(""); }}>清空清单</button> : null}
             </div>
 
             {!files.length ? (

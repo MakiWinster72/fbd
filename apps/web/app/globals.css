@@ -709,6 +709,7 @@
   .intake-panel-heading { margin-bottom: 18px; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
   .intake-panel-heading h2, .intake-config-card h2 { margin: 3px 0 0; font-family: var(--serif); font-size: 23px; }
   .intake-panel-heading > p { max-width: 290px; margin: 2px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; text-align: right; }
+  .intake-selection-notice { margin: 0 0 12px; padding: 10px 12px; color: var(--blueprint-dark); background: #edf5f8; border: 1px solid var(--line); font-size: 12px; }
   .intake-dropzone { min-height: 240px; padding: 30px 20px; display: grid; place-content: center; justify-items: center; color: var(--graphite); background: linear-gradient(135deg, rgba(237,245,248,.8), rgba(255,255,255,.5)); border: 1px dashed var(--line-strong); text-align: center; transition: background .16s ease, border-color .16s ease; }
   .intake-dropzone.dragging { background: #e7f3f8; border-color: var(--blueprint); }
   .intake-dropzone svg { width: 48px; margin-bottom: 11px; fill: none; stroke: var(--blueprint); stroke-linecap: square; stroke-linejoin: miter; stroke-width: 1.6; }
