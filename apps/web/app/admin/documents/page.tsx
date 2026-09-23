@@ -31,7 +31,10 @@ function fileId(file: File) {
 function classify(file: File): IntakeFile {
   const extension = extensionOf(file.name);
   if (!ACCEPTED_EXTENSIONS.includes(extension)) {
-    return { id: fileId(file), file, status: "blocked", reason: extension === "doc" ? "旧版 DOC 请先转换为 DOCX 或 PDF" : "仅支持 PDF 和 DOCX" };
+    return { id: fileId(file), file, status: "blocked", reason: extension === "doc" ? "旧版 DOC 请先转换为 DOCX 或 PDF" : "当前入库流程仅支持 PDF 和 DOCX，请先转换格式" };
+  }
+  if (file.size === 0) {
+    return { id: fileId(file), file, status: "blocked", reason: "空文件无法导入" };
   }
   if (file.size > MAX_FILE_BYTES) {
     return { id: fileId(file), file, status: "blocked", reason: "文件超过 200 MB 上限" };
@@ -132,7 +135,8 @@ export default function AdminDocumentsPage() {
             >
               <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 5h14l8 8v30H14z" /><path d="M28 5v9h8M24 34V20m-6 6 6-6 6 6" /></svg>
               <h3>将 PDF 或 DOCX 放到这里</h3>
-              <p>单个文件不超过 200 MB；旧版 DOC 需要先转换格式。</p>
+              <p>单个文件不超过 200 MB；其他格式请先转换为 PDF 或 DOCX。</p>
+              <p>MinerU 可解析的格式不等于本站已支持的入库格式；后端规范化流程目前仅支持 PDF/DOCX。</p>
               <button type="button" onClick={() => inputRef.current?.click()}>从电脑选择文件</button>
               <input
                 className="visually-hidden"
