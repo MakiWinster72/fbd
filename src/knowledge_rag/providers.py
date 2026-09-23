@@ -34,6 +34,15 @@ def validate_base_url(base_url: str) -> str:
     return value
 
 
+def validate_profile_protocol(purpose: str, protocol: str, base_url: str) -> None:
+    """Reject incompatible endpoint families for known hosted providers."""
+    host = (urlsplit(base_url).hostname or "").lower()
+    if host == "api.siliconflow.cn":
+        expected = "jina_compatible" if purpose == "reranker" else "openai_compatible"
+        if protocol != expected:
+            raise ValueError(f"SiliconFlow 的 {purpose} 模型应使用 {expected} 协议，而不是 {protocol}")
+
+
 class OpenAICompatibleClient:
     def __init__(self, profile: ModelProfile) -> None:
         self.base_url = validate_base_url(profile.base_url)

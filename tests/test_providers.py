@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from knowledge_rag.admin_store import ModelProfile
-from knowledge_rag.providers import JinaCompatibleReranker, OllamaReranker, TeiReranker
+from knowledge_rag.providers import JinaCompatibleReranker, OllamaReranker, TeiReranker, validate_profile_protocol
 
 
 def profile(protocol: str) -> ModelProfile:
@@ -24,6 +24,16 @@ def profile(protocol: str) -> ModelProfile:
 
 
 class RerankerProviderTests(unittest.TestCase):
+    def test_siliconflow_protocol_must_match_api_family(self) -> None:
+        url = "https://api.siliconflow.cn/v1"
+        with self.assertRaisesRegex(ValueError, "openai_compatible"):
+            validate_profile_protocol("chat", "ollama", url)
+        with self.assertRaisesRegex(ValueError, "jina_compatible"):
+            validate_profile_protocol("reranker", "ollama_reranker", url)
+        validate_profile_protocol("chat", "openai_compatible", url)
+        validate_profile_protocol("reranker", "jina_compatible", url)
+
+
     def test_jina_compatible_scores_are_restored_to_input_order(self) -> None:
         reranker = JinaCompatibleReranker(profile("jina_compatible"))
         reranker._post = lambda path, payload, timeout=180: {  # type: ignore[method-assign]

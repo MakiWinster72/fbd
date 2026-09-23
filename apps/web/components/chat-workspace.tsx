@@ -346,7 +346,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
             {error ? (
               <div className="error-banner" role="alert">
                 <strong>本次请求未完成</strong>
-                <span>{error}。确认 FastAPI 与 Ollama 正在运行后重试。</span>
+                <span>{error}。请检查管理后台当前启用的对话模型协议、接口地址及连接测试结果；重排序失败会自动降级，不会阻止回答。</span>
               </div>
             ) : null}
             <form className="composer" onSubmit={onSubmit}>

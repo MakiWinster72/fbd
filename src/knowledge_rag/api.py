@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from knowledge_rag.admin_store import AdminStore, IndexJob, ModelProfile, User
 from knowledge_rag.config import Settings
 from knowledge_rag.document_import import DocumentImportManager, ImportJob
-from knowledge_rag.providers import test_profile, validate_base_url
+from knowledge_rag.providers import test_profile, validate_base_url, validate_profile_protocol
 from knowledge_rag.rag import RagService, RetrievedSource
 from knowledge_rag.service_registry import EmbeddingIndexManager, RagServiceRegistry
 
@@ -493,6 +493,7 @@ def create_app(
     async def create_model_profile(payload: ModelProfileCreateRequest, admin: User = Depends(require_admin)) -> ModelProfileResponse:
         try:
             validate_base_url(payload.base_url)
+            validate_profile_protocol(payload.purpose, payload.protocol, payload.base_url)
             profile = await run_in_threadpool(store.create_profile, **payload.model_dump(), actor_id=admin.id)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -509,7 +510,11 @@ def create_app(
                 validate_base_url(values["base_url"])
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
+        current = await run_in_threadpool(store.get_profile, profile_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail="模型配置不存在")
         try:
+            validate_profile_protocol(current.purpose, values.get("protocol") or current.protocol, values.get("base_url") or current.base_url)
             profile = await run_in_threadpool(store.update_profile, profile_id, values, admin.id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="模型配置不存在") from exc
