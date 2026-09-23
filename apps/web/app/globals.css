@@ -696,6 +696,9 @@
   .create-access-fieldset label { display: flex; align-items: center; gap: 6px; }
 
   .document-intake-shell { width: min(1280px, calc(100% - 40px)); }
+  .intake-service-status { margin: 16px 0 0; padding: 11px 14px; color: var(--graphite); background: white; border: 1px solid var(--line); font-size: 12px; }
+  .intake-service-status.reachable { color: #176a57; background: #eaf7f3; border-color: #bfe1d6; }
+  .intake-service-status.offline { color: #8e2b27; background: #fff1f0; border-color: #efc4c1; }
   .intake-stage-rail { margin: 20px 0; padding: 13px 18px; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; list-style: none; background: var(--paper-mist); border: 1px solid var(--line); }
   .intake-stage-rail li { min-width: 0; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
   .intake-stage-rail li + li { border-left: 1px solid var(--line); padding-left: 13px; }

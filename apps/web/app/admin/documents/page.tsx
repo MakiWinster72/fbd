@@ -1,7 +1,7 @@
 "use client";
 
 import { DragEvent, useEffect, useRef, useState } from "react";
-import { getCurrentUser, listAdminKnowledgeBases, type KnowledgeBase } from "@/lib/api";
+import { getCurrentUser, getMineruStatus, listAdminKnowledgeBases, type KnowledgeBase } from "@/lib/api";
 
 type IntakeStatus = "ready" | "blocked";
 
@@ -51,6 +51,7 @@ export default function AdminDocumentsPage() {
   const [ready, setReady] = useState(false);
   const [reviewed, setReviewed] = useState(false);
   const [selectionNotice, setSelectionNotice] = useState("");
+  const [mineruStatus, setMineruStatus] = useState<"checking" | "reachable" | "offline">("checking");
 
   useEffect(() => {
     getCurrentUser().then(async (user) => {
@@ -60,6 +61,7 @@ export default function AdminDocumentsPage() {
       setKnowledgeBases(bases);
       setKnowledgeBaseId(bases[0]?.id ?? "");
       setReady(true);
+      getMineruStatus().then((status) => setMineruStatus(status.reachable ? "reachable" : "offline")).catch(() => setMineruStatus("offline"));
     }).catch((reason) => setError(reason instanceof Error ? reason.message : "加载失败"));
   }, []);
 
@@ -101,6 +103,7 @@ export default function AdminDocumentsPage() {
       </header>
 
       {error ? <p className="admin-error" role="alert">{error}</p> : null}
+      <p className={`intake-service-status ${mineruStatus}`} role="status">MinerU 服务：{mineruStatus === "checking" ? "正在检查…" : mineruStatus === "reachable" ? "端口可连接（不代表解析任务已成功）" : "无法连接；请启动服务并刷新页面。当前页面尚未提供上传能力。"}</p>
 
       <ol className="intake-stage-rail" aria-label="文件导入流程">
         {["选择文件", "解析内容", "生成切块", "写入向量", "完成核验"].map((label, index) => (

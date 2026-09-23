@@ -144,6 +144,10 @@ export function listAdminUsers(): Promise<AdminUser[]> {
   return apiRequest("/api/v1/admin/users");
 }
 
+export function getMineruStatus(): Promise<{ reachable: boolean }> {
+  return apiRequest("/api/v1/admin/mineru-status");
+}
+
 export function listAdminKnowledgeBases(): Promise<KnowledgeBase[]> {
   return apiRequest("/api/v1/admin/knowledge-bases");
 }

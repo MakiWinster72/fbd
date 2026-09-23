@@ -421,6 +421,10 @@ def create_app(
         user = store.get_user(user_id)
         return AdminUserResponse.from_user_with_access(user, access)  # type: ignore[arg-type]
 
+    @app.get("/api/v1/admin/mineru-status")
+    async def mineru_status(_: User = Depends(require_admin)) -> dict[str, bool]:
+        return {"reachable": await run_in_threadpool(_url_open, effective_settings.mineru_base_url)}
+
     @app.get("/api/v1/admin/knowledge-bases", response_model=list[KnowledgeBaseResponse])
     async def list_admin_knowledge_bases(_: User = Depends(require_admin)) -> list[KnowledgeBaseResponse]:
         return [KnowledgeBaseResponse(**asdict(item)) for item in await run_in_threadpool(store.list_knowledge_bases)]
