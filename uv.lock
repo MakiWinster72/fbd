@@ -406,40 +406,6 @@ wheels = [
 ]
 
 [[package]]
-name = "knowledge-rag"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "alembic" },
-    { name = "cryptography" },
-    { name = "fastapi" },
-    { name = "psycopg", extra = ["binary"] },
-    { name = "sqlalchemy" },
-    { name = "uvicorn" },
-]
-
-[package.optional-dependencies]
-milvus = [
-    { name = "pymilvus" },
-]
-test = [
-    { name = "httpx" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "alembic", specifier = ">=1.16,<2" },
-    { name = "cryptography", specifier = ">=45,<47" },
-    { name = "fastapi", specifier = ">=0.116,<1" },
-    { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28,<1" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
-    { name = "pymilvus", marker = "extra == 'milvus'", specifier = ">=2.6,<3" },
-    { name = "sqlalchemy", specifier = ">=2.0,<3" },
-    { name = "uvicorn", specifier = ">=0.35,<1" },
-]
-provides-extras = ["milvus", "test"]
-
-[[package]]
 name = "greenlet"
 version = "3.5.6"
 source = { registry = "https://pypi.org/simple" }
@@ -608,6 +574,42 @@ sdist = { url = "https://files.pythonhosted.org/packages/f5/08/8eea9d4b8302028f3
 wheels = [
     { url = "https://files.pythonhosted.org/packages/58/a2/bb081bab032533a855d44de1d56f8e8426114ff1ba5d1f07a438a0a654f8/idna-3.20-py3-none-any.whl", hash = "sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c", size = 69583, upload-time = "2026-09-17T14:11:03.168Z" },
 ]
+
+[[package]]
+name = "knowledge-rag"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "alembic" },
+    { name = "cryptography" },
+    { name = "fastapi" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "python-dotenv" },
+    { name = "sqlalchemy" },
+    { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+milvus = [
+    { name = "pymilvus" },
+]
+test = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.16,<2" },
+    { name = "cryptography", specifier = ">=45,<47" },
+    { name = "fastapi", specifier = ">=0.116,<1" },
+    { name = "httpx", marker = "extra == 'test'", specifier = ">=0.28,<1" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
+    { name = "pymilvus", marker = "extra == 'milvus'", specifier = ">=2.6,<3" },
+    { name = "python-dotenv", specifier = ">=1.1,<2" },
+    { name = "sqlalchemy", specifier = ">=2.0,<3" },
+    { name = "uvicorn", specifier = ">=0.35,<1" },
+]
+provides-extras = ["milvus", "test"]
 
 [[package]]
 name = "mako"

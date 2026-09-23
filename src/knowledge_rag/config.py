@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 def _env_bool(name: str, default: bool) -> bool:
     value = os.getenv(name)
@@ -40,6 +42,9 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
+        # CLI and Uvicorn do not load .env automatically. Read the file from the
+        # launch directory while preserving explicitly exported environment values.
+        load_dotenv(Path.cwd() / ".env", override=False)
         return cls(
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", cls.ollama_base_url),
             ollama_embed_model=os.getenv("OLLAMA_EMBED_MODEL", cls.ollama_embed_model),
