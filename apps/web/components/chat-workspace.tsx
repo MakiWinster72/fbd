@@ -255,7 +255,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
           </div>
           <div className="user-menu">
             <span>{currentUser.display_name}</span>
-            {currentUser.role === "admin" ? <a href="/admin/models">管理后台</a> : null}
+            {currentUser.role === "admin" ? <><a href="/admin/documents">文件导入</a><a href="/admin/models">管理后台</a></> : null}
             <button
               type="button"
               onClick={async () => {
