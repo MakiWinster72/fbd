@@ -30,6 +30,7 @@ class IngestionPipeline:
         source_path: Path,
         knowledge_base_id: str,
         mineru_content_list: Path | None = None,
+        persist: bool = True,
     ) -> PreparedIngestion:
         document = normalize_document(source_path, mineru_content_list)
         chunks = chunk_document(
@@ -40,14 +41,20 @@ class IngestionPipeline:
             overlap_chars=self.settings.chunk_overlap_chars,
         )
         output_dir = self.settings.data_dir / "normalized" / document.document_id
-        output_dir.mkdir(parents=True, exist_ok=True)
-        (output_dir / "document.json").write_text(
-            json.dumps(asdict(document), ensure_ascii=False, indent=2),
+        prepared = PreparedIngestion(document, tuple(chunks), output_dir)
+        if persist:
+            self.save_prepared(prepared)
+        return prepared
+
+    @staticmethod
+    def save_prepared(prepared: PreparedIngestion) -> None:
+        prepared.output_dir.mkdir(parents=True, exist_ok=True)
+        (prepared.output_dir / "document.json").write_text(
+            json.dumps(asdict(prepared.document), ensure_ascii=False, indent=2),
         )
-        (output_dir / "chunks.json").write_text(
-            json.dumps([asdict(chunk) for chunk in chunks], ensure_ascii=False, indent=2),
+        (prepared.output_dir / "chunks.json").write_text(
+            json.dumps([asdict(chunk) for chunk in prepared.chunks], ensure_ascii=False, indent=2),
         )
-        return PreparedIngestion(document, tuple(chunks), output_dir)
 
     def embed(self, prepared: PreparedIngestion) -> PreparedIngestion:
         embedder = OllamaEmbedder(

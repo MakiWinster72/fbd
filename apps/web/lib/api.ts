@@ -93,7 +93,7 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
     ...init,
     headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(init?.body && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },
   });
@@ -142,6 +142,36 @@ export function listKnowledgeBases(): Promise<KnowledgeBase[]> {
 
 export function listAdminUsers(): Promise<AdminUser[]> {
   return apiRequest("/api/v1/admin/users");
+}
+
+export type DocumentImportJob = {
+  id: string;
+  file_name: string;
+  knowledge_base_id: string;
+  file_hash: string;
+  status: "queued" | "parsing" | "embedding" | "completed" | "failed";
+  completed_chunks: number;
+  total_chunks: number;
+  error: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function uploadDocument(file: File, knowledgeBaseId: string, ocrMode: string, duplicateMode: string): Promise<DocumentImportJob> {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("knowledge_base_id", knowledgeBaseId);
+  body.append("ocr_mode", ocrMode);
+  body.append("duplicate_mode", duplicateMode);
+  return apiRequest("/api/v1/admin/document-imports", { method: "POST", body });
+}
+
+export function listDocumentImports(): Promise<DocumentImportJob[]> {
+  return apiRequest("/api/v1/admin/document-imports");
+}
+
+export function getDocumentImport(id: string): Promise<DocumentImportJob> {
+  return apiRequest(`/api/v1/admin/document-imports/${encodeURIComponent(id)}`);
 }
 
 export function getMineruStatus(): Promise<{ reachable: boolean }> {

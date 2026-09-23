@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -27,6 +28,7 @@ class AdminApiTests(unittest.TestCase):
         settings = replace(
             Settings(),
             app_db_path=Path(self.temp_dir.name) / "app.db",
+            data_dir=Path(self.temp_dir.name) / "data",
             model_secret_key="test-only-secret",
             auth_required=True,
         )
@@ -44,6 +46,32 @@ class AdminApiTests(unittest.TestCase):
     def login(self, username: str, password: str) -> None:
         response = self.client.post("/api/v1/auth/login", json={"username": username, "password": password})
         self.assertEqual(response.status_code, 200, response.text)
+
+    def test_document_import_requires_admin_and_validates_upload(self) -> None:
+        endpoint = "/api/v1/admin/document-imports"
+        payload = {"knowledge_base_id": "default", "ocr_mode": "native"}
+        self.assertEqual(self.client.post(endpoint, data=payload, files={"file": ("a.pdf", b"data")}).status_code, 401)
+        self.login("reader", "reader-password")
+        self.assertEqual(self.client.post(endpoint, data=payload, files={"file": ("a.pdf", b"data")}).status_code, 403)
+        self.login("admin", "strong-password")
+        self.assertEqual(self.client.post(endpoint, data=payload, files={"file": ("a.doc", b"data")}).status_code, 400)
+        self.assertEqual(self.client.post(endpoint, data=payload, files={"file": ("a.pdf", b"")}).status_code, 400)
+        with patch("knowledge_rag.document_import.DocumentImportManager._run"):
+            response = self.client.post(endpoint, data=payload, files={"file": ("a.pdf", b"data")})
+            self.assertEqual(response.status_code, 202, response.text)
+            job_id = response.json()["id"]
+            self.assertEqual(self.client.get(f"{endpoint}/{job_id}").json()["status"], "queued")
+            duplicate = self.client.post(endpoint, data=payload, files={"file": ("a.pdf", b"data")})
+            self.assertEqual(duplicate.status_code, 202)
+            self.assertEqual(duplicate.json()["id"], job_id)
+            self.assertEqual(len(self.client.get(endpoint).json()), 1)
+            from knowledge_rag.document_import import DocumentImportManager
+            DocumentImportManager(self.client.app.state.settings, self.store).update(job_id, status="completed")
+            skipped = self.client.post(endpoint, data=payload, files={"file": ("a.pdf", b"data")})
+            self.assertEqual(skipped.json()["id"], job_id)
+            replaced = self.client.post(endpoint, data={**payload, "duplicate_mode": "replace"}, files={"file": ("a.pdf", b"data")})
+            self.assertNotEqual(replaced.json()["id"], job_id)
+            self.assertEqual(len(self.client.get(endpoint).json()), 2)
 
     def test_chat_requires_login(self) -> None:
         response = self.client.post("/api/v1/chat", json={"question": "测试", "knowledge_base_id": "default"})

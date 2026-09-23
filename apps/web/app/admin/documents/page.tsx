@@ -1,7 +1,7 @@
 "use client";
 
 import { DragEvent, useEffect, useRef, useState } from "react";
-import { getCurrentUser, getMineruStatus, listAdminKnowledgeBases, listModelProfiles, type KnowledgeBase, type ModelProfile } from "@/lib/api";
+import { getCurrentUser, getDocumentImport, getMineruStatus, listAdminKnowledgeBases, listDocumentImports, listModelProfiles, uploadDocument, type DocumentImportJob, type KnowledgeBase, type ModelProfile } from "@/lib/api";
 
 type IntakeStatus = "ready" | "blocked";
 
@@ -57,6 +57,9 @@ export default function AdminDocumentsPage() {
   const [mineruStatus, setMineruStatus] = useState<"checking" | "reachable" | "offline">("checking");
   const [embeddingProfile, setEmbeddingProfile] = useState<ModelProfile | null>(null);
   const [embeddingError, setEmbeddingError] = useState("");
+  const [jobs, setJobs] = useState<DocumentImportJob[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
   useEffect(() => {
     getCurrentUser().then(async (user) => {
@@ -68,8 +71,46 @@ export default function AdminDocumentsPage() {
       setReady(true);
       getMineruStatus().then((status) => setMineruStatus(status.reachable ? "reachable" : "offline")).catch(() => setMineruStatus("offline"));
       listModelProfiles().then((profiles) => setEmbeddingProfile(profiles.find((profile) => profile.purpose === "embedding" && profile.is_active) ?? null)).catch(() => setEmbeddingError("无法读取 Embedding 配置，请检查后台接口。"));
+      listDocumentImports().then(setJobs).catch(() => setUploadError("无法加载历史导入任务"));
     }).catch((reason) => setError(reason instanceof Error ? reason.message : "加载失败"));
   }, []);
+
+  useEffect(() => {
+    const active = jobs.filter((job) => !["completed", "failed"].includes(job.status));
+    if (!active.length) return;
+    const timer = window.setTimeout(async () => {
+      const updates = await Promise.allSettled(active.map((job) => getDocumentImport(job.id)));
+      setJobs((current) => current.map((job) => {
+        const index = active.findIndex((item) => item.id === job.id);
+        const update = updates[index];
+        return index >= 0 && update.status === "fulfilled" ? update.value : job;
+      }));
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [jobs]);
+
+  async function startImport() {
+    if (!readyFiles.length || !knowledgeBaseId || uploading) return;
+    setUploading(true);
+    setUploadError("");
+    const succeeded = new Set<string>();
+    try {
+      for (const item of readyFiles) {
+        try {
+          const job = await uploadDocument(item.file, knowledgeBaseId, ocrMode, duplicateMode);
+          setJobs((current) => [job, ...current.filter((other) => other.id !== job.id)]);
+          succeeded.add(item.id);
+        } catch (reason) {
+          setUploadError(`${item.file.name}：${reason instanceof Error ? reason.message : "上传失败"}。其余文件将继续上传。`);
+        }
+      }
+      setFiles((current) => current.filter((item) => !succeeded.has(item.id)));
+      setReviewed(false);
+      setSelectionNotice(succeeded.size ? `已提交 ${succeeded.size} 个文件，后台任务进度见下方。` : "上传失败，请检查提示后重试。");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function addFiles(selected: FileList | File[]) {
     const chosen = Array.from(selected);
@@ -192,9 +233,9 @@ export default function AdminDocumentsPage() {
             <p className="section-kicker">IMPORT SETTINGS</p>
             <h2>处理设置</h2>
             <div className="intake-embedding-note"><strong>当前 Embedding</strong><span>{embeddingError || (embeddingProfile ? `${embeddingProfile.name} · ${embeddingProfile.model_name}${embeddingProfile.vector_dim ? ` · ${embeddingProfile.vector_dim} 维` : ""}` : "未启用 Embedding 模型")}</span><a href="/admin/models">查看模型配置</a></div>
-            <label><span>目标知识库</span><select value={knowledgeBaseId} onChange={(event) => setKnowledgeBaseId(event.target.value)}>{knowledgeBases.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
-            <label><span>PDF 解析方式</span><select value={ocrMode} onChange={(event) => setOcrMode(event.target.value)}><option value="auto">自动判断</option><option value="force">强制 OCR</option><option value="native">仅使用文本层</option></select><small>自动模式优先版面解析，空页回退到 PDF 文本层。</small></label>
-            <label><span>重复文件</span><select value={duplicateMode} onChange={(event) => setDuplicateMode(event.target.value)}><option value="skip">跳过相同 SHA-256</option><option value="replace">重新解析并替换</option></select></label>
+            <label><span>目标知识库</span><select value={knowledgeBaseId} onChange={(event) => { setKnowledgeBaseId(event.target.value); setReviewed(false); }}>{knowledgeBases.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
+            <label><span>PDF 解析方式</span><select value={ocrMode} onChange={(event) => { setOcrMode(event.target.value); setReviewed(false); }}><option value="auto">自动判断</option><option value="force">强制 OCR</option><option value="native">仅使用文本层</option></select><small>自动模式优先版面解析，空页回退到 PDF 文本层。</small></label>
+            <label><span>重复文件</span><select value={duplicateMode} onChange={(event) => { setDuplicateMode(event.target.value); setReviewed(false); }}><option value="skip">跳过相同 SHA-256</option><option value="replace">重新解析并替换</option></select></label>
           </section>
 
           <section className="intake-summary-card" aria-live="polite">
@@ -203,11 +244,22 @@ export default function AdminDocumentsPage() {
             <div><span>合计大小</span><strong>{formatBytes(totalBytes)}</strong></div>
           </section>
 
-          {reviewed ? <p className="intake-review-note" role="status">清单检查完成。下一阶段接入上传接口后，即可开始后台解析与向量化。</p> : null}
-          <button className="intake-review-button" type="button" disabled={!readyFiles.length || !knowledgeBaseId} onClick={() => setReviewed(true)}>检查导入清单</button>
-          <button className="intake-import-button" type="button" disabled title="上传与后台任务接口将在下一阶段接入">开始导入 · 接口待接入</button>
-          <p className="intake-footnote">当前提交仅完成界面与前端校验，不会上传文件或修改知识库。</p>
+          {reviewed ? <p className="intake-review-note" role="status">清单检查完成。确认目标知识库和解析设置后即可导入。</p> : null}
+          {uploadError ? <p className="admin-error" role="alert">{uploadError}</p> : null}
+          <button className="intake-review-button" type="button" disabled={!readyFiles.length || !knowledgeBaseId || uploading} onClick={() => setReviewed(true)}>检查导入清单</button>
+          <button className="intake-review-button" type="button" disabled={!reviewed || !readyFiles.length || !knowledgeBaseId || !embeddingProfile || uploading || (ocrMode !== "native" && mineruStatus !== "reachable")} onClick={startImport}>{uploading ? "正在上传…" : "开始导入"}</button>
+          <p className="intake-footnote">PDF 默认通过 MinerU 解析；纯文本层模式可跳过 MinerU。任务失败会显示原因，可重新选择文件重试。</p>
         </aside>
+      </section>
+      <section className="intake-panel intake-jobs" aria-live="polite">
+        <div className="intake-panel-heading"><div><p className="section-kicker">IMPORT HISTORY</p><h2>导入任务</h2></div></div>
+        {!jobs.length ? <p className="intake-footnote">尚无导入任务。</p> : jobs.map((job) => (
+          <article className="intake-job-row" key={job.id}>
+            <strong>{job.file_name}</strong>
+            <span>{({ queued: "等待处理", parsing: "正在解析", embedding: "正在向量化", completed: "已完成", failed: "失败" } as const)[job.status]} · {job.completed_chunks}/{job.total_chunks || "?"} 切块 · {job.knowledge_base_id}</span>
+            {job.error ? <p className="form-error">{job.error}</p> : null}
+          </article>
+        ))}
       </section>
     </main>
   );

@@ -71,6 +71,21 @@ class IndexJobRecord(Base):
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class DocumentImportRecord(Base):
+    __tablename__ = "document_imports"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    knowledge_base_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    file_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    total_chunks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_chunks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 class AuditLogRecord(Base):
     __tablename__ = "audit_logs"
 

@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import socket
+from pathlib import Path
+from uuid import uuid4
 from dataclasses import asdict
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 
 from knowledge_rag.admin_store import AdminStore, IndexJob, ModelProfile, User
 from knowledge_rag.config import Settings
+from knowledge_rag.document_import import DocumentImportManager, ImportJob
 from knowledge_rag.providers import test_profile, validate_base_url
 from knowledge_rag.rag import RagService, RetrievedSource
 from knowledge_rag.service_registry import EmbeddingIndexManager, RagServiceRegistry
@@ -278,6 +281,7 @@ def create_app(
     store.ensure_bootstrap_admin(effective_settings.bootstrap_admin_username, effective_settings.bootstrap_admin_password)
     registry = RagServiceRegistry(effective_settings, store)
     index_manager = EmbeddingIndexManager(effective_settings, store, registry)
+    import_manager = DocumentImportManager(effective_settings, store)
 
     app = FastAPI(
         title="Knowledge RAG API",
@@ -420,6 +424,57 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         user = store.get_user(user_id)
         return AdminUserResponse.from_user_with_access(user, access)  # type: ignore[arg-type]
+
+    @app.get("/api/v1/admin/document-imports", response_model=list[ImportJob])
+    async def list_document_imports(_: User = Depends(require_admin)) -> list[ImportJob]:
+        return await run_in_threadpool(import_manager.list)
+
+    @app.get("/api/v1/admin/document-imports/{job_id}", response_model=ImportJob)
+    async def get_document_import(job_id: str, _: User = Depends(require_admin)) -> ImportJob:
+        job = await run_in_threadpool(import_manager.get, job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="导入任务不存在")
+        return job
+
+    @app.post("/api/v1/admin/document-imports", response_model=ImportJob, status_code=202)
+    async def upload_document(
+        file: UploadFile = File(...),
+        knowledge_base_id: KnowledgeBaseId = Form(...),
+        ocr_mode: Literal["auto", "force", "native"] = Form("auto"),
+        duplicate_mode: Literal["skip", "replace"] = Form("skip"),
+        _: User = Depends(require_admin),
+    ) -> ImportJob:
+        bases = await run_in_threadpool(store.list_knowledge_bases)
+        if not any(base.id == knowledge_base_id and base.active for base in bases):
+            raise HTTPException(status_code=400, detail="目标知识库不可用")
+        name = Path(file.filename or "").name
+        suffix = Path(name).suffix.lower()
+        if suffix not in {".pdf", ".docx"}:
+            raise HTTPException(status_code=400, detail="仅支持 PDF 和 DOCX")
+        if not name or len(name) > 255:
+            raise HTTPException(status_code=400, detail="无效文件名")
+        directory = effective_settings.data_dir / "uploads"
+        directory.mkdir(parents=True, exist_ok=True)
+        upload_dir = directory / uuid4().hex
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        path = upload_dir / name
+        size = 0
+        try:
+            with path.open("wb") as target:
+                while chunk := await file.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > 200 * 1024 * 1024:
+                        raise HTTPException(status_code=413, detail="单文件超过 200 MB")
+                    target.write(chunk)
+            if size == 0:
+                raise HTTPException(status_code=400, detail="文件不能为空")
+            return await run_in_threadpool(import_manager.start, path, name, knowledge_base_id, ocr_mode, duplicate_mode)
+        except Exception:
+            path.unlink(missing_ok=True)
+            upload_dir.rmdir()
+            raise
+        finally:
+            await file.close()
 
     @app.get("/api/v1/admin/mineru-status")
     async def mineru_status(_: User = Depends(require_admin)) -> dict[str, bool]:

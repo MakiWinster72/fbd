@@ -757,6 +757,10 @@
   .intake-import-button { color: var(--muted); background: var(--paper-mist); border-color: var(--line); cursor: not-allowed; }
   .intake-review-button:disabled { opacity: .5; cursor: not-allowed; }
   .intake-review-note, .intake-footnote { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+  .intake-jobs { margin-top: 20px; }
+  .intake-job-row { padding: 12px 0; display: grid; gap: 5px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+  .intake-job-row strong { color: var(--archive-blue); font-size: 12px; }
+  .intake-job-row span { color: var(--graphite); font-size: 11px; }
   .intake-review-note { padding: 10px 12px; color: #176a57; background: #eaf7f3; border: 1px solid #bfe1d6; }
 
   @media (max-width: 760px) {
