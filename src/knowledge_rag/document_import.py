@@ -44,10 +44,21 @@ class ImportJob:
     error: str
     created_at: str
     updated_at: str
+    source_available: bool
 
 
-def to_job(record: DocumentImportRecord) -> ImportJob:
-    return ImportJob(**{name: getattr(record, name) for name in ImportJob.__dataclass_fields__})
+def retained_source(data_dir: Path, job_id: str, file_name: str) -> Path | None:
+    if Path(file_name).name != file_name or file_name in {".", ".."}:
+        return None
+    return data_dir / "uploads" / job_id / file_name
+
+
+def to_job(record: DocumentImportRecord, data_dir: Path) -> ImportJob:
+    source = retained_source(data_dir, record.id, record.file_name)
+    return ImportJob(
+        **{name: getattr(record, name) for name in ImportJob.__dataclass_fields__ if name != "source_available"},
+        source_available=record.status == "failed" and source is not None and source.is_file(),
+    )
 
 
 def parse_mineru(path: Path, output: Path, base_url: str, force_ocr: bool) -> Path:
@@ -103,12 +114,12 @@ class DocumentImportManager:
             recover_expired(self.store.engine)
         with Session(self.store.engine) as session:
             record = session.get(DocumentImportRecord, job_id)
-            return to_job(record) if record else None
+            return to_job(record, self.settings.data_dir) if record else None
 
     def list(self) -> list[ImportJob]:
         recover_expired(self.store.engine)
         with Session(self.store.engine) as session:
-            return [to_job(item) for item in session.scalars(select(DocumentImportRecord).order_by(DocumentImportRecord.created_at.desc()).limit(50))]
+            return [to_job(item, self.settings.data_dir) for item in session.scalars(select(DocumentImportRecord).order_by(DocumentImportRecord.created_at.desc()).limit(50))]
 
     def update(self, job_id: str, **values: object) -> None:
         with Session(self.store.engine) as session, session.begin():
@@ -129,7 +140,7 @@ class DocumentImportManager:
                 if previous and previous.status in {"queued", "parsing", "embedding"} and duplicate_mode == "skip":
                     path.unlink(missing_ok=True)
                     path.parent.rmdir()
-                    return to_job(previous)
+                    return to_job(previous, self.settings.data_dir)
                 raise ValueError("文档正在由其他任务处理，请稍后重试")
             if previous and (previous.status in {"queued", "parsing", "embedding"} or duplicate_mode == "skip"):
                 lease.close()
@@ -137,7 +148,7 @@ class DocumentImportManager:
                     raise ValueError("相同文件正在处理，请等待任务完成")
                 path.unlink(missing_ok=True)
                 path.parent.rmdir()
-                return to_job(previous)
+                return to_job(previous, self.settings.data_dir)
             destination = self.settings.data_dir / "uploads" / job_id
             try:
                 destination.mkdir(parents=True, exist_ok=False)
@@ -156,7 +167,7 @@ class DocumentImportManager:
                                                   file_hash=digest, status="queued", completed_chunks=0, total_chunks=0,
                                                   error="", created_at=stamp, updated_at=stamp)
                     session.add(record)
-                    result = to_job(record)
+                    result = to_job(record, self.settings.data_dir)
             except Exception:
                 if retained.exists():
                     path.parent.mkdir(parents=True, exist_ok=True)
@@ -182,8 +193,8 @@ class DocumentImportManager:
                 raise KeyError("导入任务不存在")
             if job.status != "failed":
                 raise ValueError("仅失败的任务可以重试")
-            path = self.settings.data_dir / "uploads" / job.id / job.file_name
-            if not path.is_file() or sha256_file(path) != job.file_hash:
+            path = retained_source(self.settings.data_dir, job.id, job.file_name)
+            if path is None or not path.is_file() or sha256_file(path) != job.file_hash:
                 raise ValueError("原文件未保留或内容已变化，请重新选择文件上传")
             options_path = path.parent / "options.json"
             options = json.loads(options_path.read_text()) if options_path.is_file() else {}
@@ -217,6 +228,37 @@ class DocumentImportManager:
                 if not handed_off:
                     lease.close()
                 raise
+
+    def discard_failed_upload(self, job_id: str) -> ImportJob:
+        """Delete only the retained source of a failed import, never its Milvus data."""
+        with self._lock:
+            recover_expired(self.store.engine)
+            job = self.get(job_id)
+            if job is None:
+                raise KeyError("导入任务不存在")
+            if job.status != "failed":
+                raise ValueError("仅失败的任务可清理上传原件")
+            lease = try_acquire(self.store.engine, DOCUMENT_LEASE_SCOPE, stable_id("document", job.file_hash))
+            if lease is None:
+                raise ValueError("文档正在由其他任务处理，请稍后重试")
+            try:
+                current = self.get(job_id)
+                if current is None or current.status != "failed":
+                    raise ValueError("任务状态已变化，请刷新后重试")
+                source = retained_source(self.settings.data_dir, job_id, current.file_name)
+                if source is None or not source.is_file():
+                    raise ValueError("该任务没有可清理的原文件")
+                options = source.parent / "options.json"
+                if any(item not in {source, options} for item in source.parent.iterdir()):
+                    raise ValueError("上传目录包含未知文件，已拒绝清理")
+                lease.ensure_owned()
+                source.unlink()
+                options.unlink(missing_ok=True)
+                source.parent.rmdir()
+                self.update(job_id, status="discarded")
+                return self.get(job_id)  # type: ignore[return-value]
+            finally:
+                lease.close()
 
     def _milvus(self) -> MilvusChunkStore:
         collection = self.store.get_setting("active_collection_name", self.settings.milvus_collection)
@@ -283,7 +325,7 @@ class DocumentImportManager:
     def _jobs_for_document(self, knowledge_base_id: str, document_id: str) -> list[ImportJob]:
         with Session(self.store.engine) as session:
             records = session.scalars(select(DocumentImportRecord).where(DocumentImportRecord.knowledge_base_id == knowledge_base_id)).all()
-            return [to_job(record) for record in records if stable_id("document", record.file_hash) == document_id]
+            return [to_job(record, self.settings.data_dir) for record in records if stable_id("document", record.file_hash) == document_id]
 
     def reindex_document(self, knowledge_base_id: str, document_id: str) -> ImportJob:
         with self._lock:

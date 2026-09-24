@@ -1,9 +1,10 @@
 "use client";
 
 import { DragEvent, useEffect, useRef, useState } from "react";
-import { deleteIndexedDocument, getCurrentUser, getDocumentImport, getIndexedDocument, getMineruStatus, listAdminKnowledgeBases, listDocumentImports, listIndexedDocuments, listModelProfiles, reindexIndexedDocument, retryDocumentImport, uploadDocument, type DocumentImportJob, type IndexedDocument, type IndexedDocumentDetail, type KnowledgeBase, type ModelProfile } from "@/lib/api";
+import { deleteIndexedDocument, discardFailedUpload, getCurrentUser, getDocumentImport, getIndexedDocument, getMineruStatus, listAdminKnowledgeBases, listDocumentImports, listIndexedDocuments, listModelProfiles, reindexIndexedDocument, retryDocumentImport, uploadDocument, type DocumentImportJob, type IndexedDocument, type IndexedDocumentDetail, type KnowledgeBase, type ModelProfile } from "@/lib/api";
 
 type IntakeStatus = "ready" | "blocked";
+type JobFilter = "all" | "active" | "failed" | "completed" | "deleted" | "discarded";
 
 type IntakeFile = {
   id: string;
@@ -60,11 +61,16 @@ export default function AdminDocumentsPage() {
   const [jobs, setJobs] = useState<DocumentImportJob[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [jobActionError, setJobActionError] = useState("");
   const [documents, setDocuments] = useState<IndexedDocument[]>([]);
   const [documentDetail, setDocumentDetail] = useState<IndexedDocumentDetail | null>(null);
   const [documentError, setDocumentError] = useState("");
   const [documentBusy, setDocumentBusy] = useState("");
   const [documentRevision, setDocumentRevision] = useState(0);
+  const [jobFilter, setJobFilter] = useState<JobFilter>("all");
+  const [jobKnowledgeBase, setJobKnowledgeBase] = useState("all");
+  const [jobSearch, setJobSearch] = useState("");
+  const [jobsRefreshing, setJobsRefreshing] = useState(false);
 
   useEffect(() => {
     getCurrentUser().then(async (user) => {
@@ -91,7 +97,7 @@ export default function AdminDocumentsPage() {
   }, [knowledgeBaseId, documentRevision, jobs.filter((job) => job.status === "completed" || job.status === "deleted").map((job) => `${job.id}:${job.status}`).join(",")]);
 
   useEffect(() => {
-    const active = jobs.filter((job) => !["completed", "failed", "deleted"].includes(job.status));
+    const active = jobs.filter((job) => ["queued", "parsing", "embedding"].includes(job.status));
     if (!active.length) return;
     const timer = window.setTimeout(async () => {
       const updates = await Promise.allSettled(active.map((job) => getDocumentImport(job.id)));
@@ -137,13 +143,32 @@ export default function AdminDocumentsPage() {
 
   async function retryImport(job: DocumentImportJob) {
     setDocumentBusy(job.id);
-    setUploadError("");
+    setJobActionError("");
     try {
       const updated = await retryDocumentImport(job.id);
       setJobs((current) => current.map((item) => item.id === updated.id ? updated : item));
     } catch (reason) {
-      setUploadError(`${job.file_name}：${reason instanceof Error ? reason.message : "重试失败"}`);
+      setJobActionError(`${job.file_name}：${reason instanceof Error ? reason.message : "重试失败"}`);
     } finally { setDocumentBusy(""); }
+  }
+
+  async function discardUpload(job: DocumentImportJob) {
+    if (!window.confirm(`确认清理《${job.file_name}》的失败上传原件？清理后无法重试该任务，但不会删除已索引文档。`)) return;
+    setDocumentBusy(job.id);
+    setJobActionError("");
+    try {
+      const updated = await discardFailedUpload(job.id);
+      setJobs((current) => current.map((item) => item.id === updated.id ? updated : item));
+    } catch (reason) {
+      setJobActionError(`${job.file_name}：${reason instanceof Error ? reason.message : "清理失败"}`);
+    } finally { setDocumentBusy(""); }
+  }
+
+  async function refreshJobs() {
+    setJobsRefreshing(true);
+    try { setJobs(await listDocumentImports()); setJobActionError(""); }
+    catch (reason) { setJobActionError(reason instanceof Error ? reason.message : "刷新任务失败"); }
+    finally { setJobsRefreshing(false); }
   }
 
   async function startImport() {
@@ -192,6 +217,12 @@ export default function AdminDocumentsPage() {
   const readyFiles = files.filter((item) => item.status === "ready");
   const blockedFiles = files.filter((item) => item.status === "blocked");
   const totalBytes = readyFiles.reduce((total, item) => total + item.file.size, 0);
+  const visibleJobs = jobs.filter((job) => {
+    if (jobKnowledgeBase !== "all" && job.knowledge_base_id !== jobKnowledgeBase) return false;
+    if (jobSearch.trim() && !job.file_name.toLocaleLowerCase().includes(jobSearch.trim().toLocaleLowerCase())) return false;
+    if (jobFilter === "active") return ["queued", "parsing", "embedding"].includes(job.status);
+    return jobFilter === "all" || job.status === jobFilter;
+  });
 
   if (!ready) return <main className="auth-status"><span className="auth-spinner" /><p>{error || "正在验证管理员权限…"}</p></main>;
 
@@ -330,13 +361,22 @@ export default function AdminDocumentsPage() {
         ))}
       </section>
       <section className="intake-panel intake-jobs" aria-live="polite">
-        <div className="intake-panel-heading"><div><p className="section-kicker">IMPORT HISTORY</p><h2>导入任务</h2></div></div>
-        {!jobs.length ? <p className="intake-footnote">尚无导入任务。</p> : jobs.map((job) => (
+        <div className="intake-panel-heading"><div><p className="section-kicker">IMPORT HISTORY</p><h2>导入任务 · {visibleJobs.length}</h2></div><button className="intake-text-button" type="button" disabled={jobsRefreshing} onClick={() => void refreshJobs()}>{jobsRefreshing ? "正在刷新…" : "刷新任务"}</button></div>
+        <p className="intake-footnote">显示最近 50 条任务；筛选只作用于当前已加载的记录。</p>
+        {jobActionError ? <p className="admin-error" role="alert">{jobActionError}</p> : null}
+        <div className="intake-job-filters">
+          <label>状态<select value={jobFilter} onChange={(event) => setJobFilter(event.target.value as JobFilter)}><option value="all">全部状态</option><option value="active">进行中</option><option value="failed">失败</option><option value="completed">已完成</option><option value="deleted">已删除文档</option><option value="discarded">已清理原件</option></select></label>
+          <label>知识库<select value={jobKnowledgeBase} onChange={(event) => setJobKnowledgeBase(event.target.value)}><option value="all">全部知识库</option>{knowledgeBases.map((base) => <option key={base.id} value={base.id}>{base.name}</option>)}</select></label>
+          <label>文件名<input type="search" value={jobSearch} onChange={(event) => setJobSearch(event.target.value)} placeholder="查找导入任务" /></label>
+        </div>
+        {!jobs.length ? <p className="intake-footnote">尚无导入任务。上传文件后将在这里看到处理进度。</p> : !visibleJobs.length ? <p className="intake-footnote">没有符合筛选条件的任务，请调整状态、知识库或文件名。</p> : visibleJobs.map((job) => (
           <article className="intake-job-row" key={job.id}>
             <strong>{job.file_name}</strong>
-            <span>{({ queued: "等待处理", parsing: "正在解析", embedding: "正在向量化", completed: "已完成", failed: "失败", deleted: "已删除" } as const)[job.status]} · {job.completed_chunks}/{job.total_chunks || "?"} 切块 · {job.knowledge_base_id}</span>
-            {job.error ? <p className="form-error">{job.error}</p> : null}
-            {job.status === "failed" ? <button className="intake-retry-button" type="button" disabled={!!documentBusy} onClick={() => void retryImport(job)}>重试导入</button> : null}
+            <span className={`intake-job-state ${job.status}`}>{({ queued: "等待处理", parsing: "正在解析", embedding: "正在向量化", completed: "已完成", failed: "失败", deleted: "已删除文档", discarded: "已清理原件" } as const)[job.status]} · {job.knowledge_base_id}</span>
+            <span>{job.status === "embedding" ? `${job.completed_chunks}/${job.total_chunks || "?"} 个切块已生成向量${job.total_chunks > 0 && job.completed_chunks >= job.total_chunks ? "，等待写入索引" : ""}` : job.status === "completed" ? `已入库 ${job.completed_chunks} 个切块` : job.status === "failed" ? `已处理 ${job.completed_chunks}/${job.total_chunks || "?"} 个切块` : job.status === "parsing" ? "正在解析文件内容" : job.status === "queued" ? "已接收文件，等待后台处理" : job.status === "discarded" ? "失败原件已清理，无法再重试" : "索引已从知识库中删除"}</span>
+            {job.error && job.status === "failed" ? <p className="form-error">失败原因：{job.error}</p> : null}
+            {job.status === "failed" && !job.source_available ? <p className="intake-footnote">未保留原文件；请重新选择文件上传。如为重新向量化任务，可从已入库文档重新发起。</p> : null}
+            {job.status === "failed" && job.source_available ? <div className="intake-job-actions"><button type="button" disabled={!!documentBusy} onClick={() => void retryImport(job)}>重试导入</button><button type="button" disabled={!!documentBusy} onClick={() => void discardUpload(job)}>清理失败原件</button></div> : null}
           </article>
         ))}
       </section>

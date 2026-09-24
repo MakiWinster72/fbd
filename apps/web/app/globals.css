@@ -761,8 +761,17 @@
   .intake-job-row { padding: 12px 0; display: grid; gap: 5px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
   .intake-job-row strong { color: var(--archive-blue); font-size: 12px; }
   .intake-job-row span { color: var(--graphite); font-size: 11px; }
-  .intake-retry-button { justify-self: start; padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 4px; background: transparent; color: var(--archive-blue); cursor: pointer; }
-  .intake-retry-button:disabled { opacity: .5; cursor: wait; }
+  .intake-job-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr); gap: 10px; margin: 16px 0; }
+  .intake-job-filters label { min-width: 0; display: grid; gap: 5px; color: var(--graphite); font-size: 11px; font-weight: 700; }
+  .intake-job-filters select, .intake-job-filters input { min-width: 0; width: 100%; min-height: 36px; padding: 6px 9px; color: var(--archive-blue); border: 1px solid var(--line-strong); background: white; font: 12px var(--sans); }
+  .intake-job-state { font-weight: 700; }
+  .intake-job-state.completed { color: #176a57; }
+  .intake-job-state.failed { color: #8e2b27; }
+  .intake-job-state.discarded, .intake-job-state.deleted { color: var(--muted); }
+  .intake-job-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px; }
+  .intake-job-actions button { padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 4px; background: transparent; color: var(--archive-blue); cursor: pointer; }
+  .intake-job-actions button:last-child { color: #8e2b27; }
+  .intake-job-actions button:disabled { opacity: .5; cursor: wait; }
   .intake-document-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
   .intake-document-actions button { padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 4px; background: transparent; color: var(--archive-blue); cursor: pointer; }
   .intake-document-actions button:hover { background: var(--paper); }
@@ -808,5 +817,6 @@
     .intake-status-mark { display: none; }
     .intake-sidebar { position: static; padding: 0 16px; }
     .intake-config-card, .intake-summary-card { border-color: var(--line-strong); }
+    .intake-job-filters { grid-template-columns: 1fr; }
   }
 }

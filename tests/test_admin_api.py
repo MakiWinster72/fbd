@@ -172,6 +172,43 @@ class AdminApiTests(unittest.TestCase):
         self.wait_for_no_lease("default", stable_id("document", job.file_hash))
         other_store.engine.dispose()
 
+    def test_discard_failed_upload_preserves_record_and_respects_lease(self) -> None:
+        from knowledge_rag.document_leases import try_acquire
+        endpoint = "/api/v1/admin/document-imports"
+        self.assertEqual(self.client.post(f"{endpoint}/missing/discard").status_code, 401)
+        self.login("reader", "reader-password")
+        self.assertEqual(self.client.post(f"{endpoint}/missing/discard").status_code, 403)
+        self.login("admin", "strong-password")
+        with patch("knowledge_rag.document_import.DocumentImportManager._run", side_effect=lambda job, path, mode, lease: lease.close()):
+            response = self.client.post(endpoint, data={"knowledge_base_id": "default", "ocr_mode": "native"}, files={"file": ("failed.pdf", b"retained")})
+        self.assertEqual(response.status_code, 202, response.text)
+        job_id = response.json()["id"]
+        doc_id = stable_id("document", response.json()["file_hash"])
+        self.wait_for_no_lease("default", doc_id)
+        path = self.client.app.state.settings.data_dir / "uploads" / job_id / "failed.pdf"
+        self.assertEqual(self.client.post(f"{endpoint}/{job_id}/discard").status_code, 409)
+        manager = self.client.app.state.document_import_manager
+        manager.update(job_id, status="failed", error="解析失败")
+        self.assertTrue(self.client.get(f"{endpoint}/{job_id}").json()["source_available"])
+        other_store = AdminStore(self.client.app.state.settings.app_db_path, "test-only-secret")
+        lease = try_acquire(other_store.engine, DOCUMENT_LEASE_SCOPE, doc_id)
+        self.assertIsNotNone(lease)
+        try:
+            self.assertEqual(self.client.post(f"{endpoint}/{job_id}/discard").status_code, 409)
+            self.assertTrue(path.exists())
+        finally:
+            lease.close()
+            other_store.engine.dispose()
+        with patch.object(manager, "_milvus", side_effect=AssertionError("清理原件不应访问索引")):
+            cleared = self.client.post(f"{endpoint}/{job_id}/discard")
+        self.assertEqual(cleared.status_code, 200, cleared.text)
+        self.assertEqual(cleared.json()["status"], "discarded")
+        self.assertFalse(cleared.json()["source_available"])
+        self.assertFalse(path.parent.exists())
+        self.assertEqual(self.client.post(f"{endpoint}/{job_id}/retry").status_code, 409)
+        self.assertEqual(self.client.post(f"{endpoint}/{job_id}/discard").status_code, 409)
+        self.assertEqual(len(self.client.get(endpoint).json()), 1)
+
     def test_embedding_failure_does_not_write_partial_index_and_retry_cleans_up(self) -> None:
         from knowledge_rag.models import Chunk, ParsedDocument
         from knowledge_rag.pipeline import PreparedIngestion

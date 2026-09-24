@@ -479,6 +479,15 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @app.post("/api/v1/admin/document-imports/{job_id}/discard", response_model=ImportJob)
+    async def discard_failed_upload(job_id: str, _: User = Depends(require_admin)) -> ImportJob:
+        try:
+            return await run_in_threadpool(import_manager.discard_failed_upload, job_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="导入任务不存在") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.post("/api/v1/admin/document-imports", response_model=ImportJob, status_code=202)
     async def upload_document(
         file: UploadFile = File(...),

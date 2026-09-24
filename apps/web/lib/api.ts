@@ -149,7 +149,8 @@ export type DocumentImportJob = {
   file_name: string;
   knowledge_base_id: string;
   file_hash: string;
-  status: "queued" | "parsing" | "embedding" | "completed" | "failed" | "deleted";
+  status: "queued" | "parsing" | "embedding" | "completed" | "failed" | "deleted" | "discarded";
+  source_available: boolean;
   completed_chunks: number;
   total_chunks: number;
   error: string;
@@ -195,6 +196,10 @@ export function getDocumentImport(id: string): Promise<DocumentImportJob> {
 
 export function retryDocumentImport(id: string): Promise<DocumentImportJob> {
   return apiRequest(`/api/v1/admin/document-imports/${encodeURIComponent(id)}/retry`, { method: "POST" });
+}
+
+export function discardFailedUpload(id: string): Promise<DocumentImportJob> {
+  return apiRequest(`/api/v1/admin/document-imports/${encodeURIComponent(id)}/discard`, { method: "POST" });
 }
 
 export function getMineruStatus(): Promise<{ reachable: boolean }> {

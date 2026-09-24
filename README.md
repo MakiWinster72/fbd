@@ -3,3 +3,10 @@
 
 建议使用该稳定入口，而不是直接填写 Python 模块路径；这样以后调整内部包结构时，启动命令无需变化。生产环境去掉 `--reload`。
 uv run knowledge-rag serve --host 127.0.0.1 --port 8080 --reload
+浏览器通过 Next.js rewrite 访问 FastAPI（大文件上传使用流式转发路由），无需额外开放 CORS。失败导入的原件保存在 `RAG_DATA_DIR/uploads/<job_id>/` 供重试；在管理员页面选择“清理失败原件”后无法再重试该任务，但不会删除已入库文档。生产环境启用 HTTPS 时，应设置：
+文件导入与文档管理：http://127.0.0.1:3000/admin/documents
+GET  /api/v1/admin/documents?knowledge_base_id=default
+GET  /api/v1/admin/document-imports
+POST /api/v1/admin/document-imports
+POST /api/v1/admin/document-imports/{job_id}/retry
+POST /api/v1/admin/document-imports/{job_id}/discard
