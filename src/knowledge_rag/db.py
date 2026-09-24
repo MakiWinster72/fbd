@@ -86,6 +86,16 @@ class DocumentImportRecord(Base):
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class DocumentLeaseRecord(Base):
+    __tablename__ = "document_leases"
+
+    knowledge_base_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(36), nullable=False)
+    job_id: Mapped[str | None] = mapped_column(String(36))
+    expires_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
 class AuditLogRecord(Base):
     __tablename__ = "audit_logs"
 

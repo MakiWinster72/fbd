@@ -465,7 +465,7 @@ def create_app(
 
     @app.get("/api/v1/admin/document-imports/{job_id}", response_model=ImportJob)
     async def get_document_import(job_id: str, _: User = Depends(require_admin)) -> ImportJob:
-        job = await run_in_threadpool(import_manager.get, job_id)
+        job = await run_in_threadpool(import_manager.get, job_id, recover=True)
         if job is None:
             raise HTTPException(status_code=404, detail="导入任务不存在")
         return job

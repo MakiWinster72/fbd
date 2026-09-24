@@ -7,7 +7,11 @@ from pathlib import Path
 from unittest.mock import patch
 import hashlib
 import json
+import time
 
+from sqlalchemy.orm import Session
+from knowledge_rag.db import DocumentLeaseRecord
+from knowledge_rag.document_import import DOCUMENT_LEASE_SCOPE
 from knowledge_rag.documents import stable_id
 
 from fastapi.testclient import TestClient
@@ -51,6 +55,15 @@ class AdminApiTests(unittest.TestCase):
         response = self.client.post("/api/v1/auth/login", json={"username": username, "password": password})
         self.assertEqual(response.status_code, 200, response.text)
 
+    def wait_for_no_lease(self, _kb: str, doc_id: str) -> None:
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            with Session(self.store.engine) as session:
+                if session.get(DocumentLeaseRecord, (DOCUMENT_LEASE_SCOPE, doc_id)) is None:
+                    return
+            time.sleep(0.01)
+        self.fail("后台任务未释放文档租约")
+
     def test_document_import_requires_admin_and_validates_upload(self) -> None:
         endpoint = "/api/v1/admin/document-imports"
         payload = {"knowledge_base_id": "default", "ocr_mode": "native"}
@@ -60,10 +73,11 @@ class AdminApiTests(unittest.TestCase):
         self.login("admin", "strong-password")
         self.assertEqual(self.client.post(endpoint, data=payload, files={"file": ("a.doc", b"data")}).status_code, 400)
         self.assertEqual(self.client.post(endpoint, data=payload, files={"file": ("a.pdf", b"")}).status_code, 400)
-        with patch("knowledge_rag.document_import.DocumentImportManager._run"):
+        with patch("knowledge_rag.document_import.DocumentImportManager._run", side_effect=lambda job, path, mode, lease: lease.close()):
             response = self.client.post(endpoint, data=payload, files={"file": ("a.pdf", b"data")})
             self.assertEqual(response.status_code, 202, response.text)
             job_id = response.json()["id"]
+            self.wait_for_no_lease("default", stable_id("document", response.json()["file_hash"]))
             self.assertEqual(self.client.get(f"{endpoint}/{job_id}").json()["status"], "queued")
             duplicate = self.client.post(endpoint, data=payload, files={"file": ("a.pdf", b"data")})
             self.assertEqual(duplicate.status_code, 202)
@@ -81,7 +95,7 @@ class AdminApiTests(unittest.TestCase):
         endpoint = "/api/v1/admin/document-imports"
         self.login("admin", "strong-password")
         self.assertEqual(self.client.post(f"{endpoint}/missing/retry").status_code, 404)
-        with patch("knowledge_rag.document_import.DocumentImportManager._run"):
+        with patch("knowledge_rag.document_import.DocumentImportManager._run", side_effect=lambda job, path, mode, lease: lease._stop.set()):
             first = self.client.post(endpoint, data={"knowledge_base_id": "default", "ocr_mode": "native"}, files={"file": ("fixture.pdf", b"original")})
             self.assertEqual(first.status_code, 202, first.text)
             job_id = first.json()["id"]
@@ -93,6 +107,10 @@ class AdminApiTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), b"original")
             manager = self.client.app.state.document_import_manager
             from knowledge_rag.document_import import DocumentImportManager
+            DocumentImportManager(self.client.app.state.settings, self.store)
+            self.assertEqual(manager.get(job_id).status, "queued")  # A live worker must not be invalidated.
+            with Session(self.store.engine) as session, session.begin():
+                session.get(DocumentLeaseRecord, (DOCUMENT_LEASE_SCOPE, stable_id("document", first.json()["file_hash"]))).expires_at = "2000-01-01T00:00:00+00:00"
             DocumentImportManager(self.client.app.state.settings, self.store)
             self.assertEqual(manager.get(job_id).status, "failed")
             self.assertEqual(path.read_bytes(), b"original")
@@ -106,14 +124,63 @@ class AdminApiTests(unittest.TestCase):
             path.unlink()
             self.assertEqual(self.client.post(f"{endpoint}/{job_id}/retry").status_code, 409)
 
+    def test_independent_managers_fence_competing_operations(self) -> None:
+        from knowledge_rag.document_import import DocumentImportManager
+        other_store = AdminStore(self.client.app.state.settings.app_db_path, "test-only-secret")
+        first_manager = self.client.app.state.document_import_manager
+        second_manager = DocumentImportManager(self.client.app.state.settings, other_store)
+        staging = self.client.app.state.settings.data_dir / "uploads" / "staging-first"
+        staging.mkdir(parents=True)
+        (staging / "same.pdf").write_bytes(b"shared")
+        with patch("knowledge_rag.document_import.DocumentImportManager._run") as worker:
+            worker.side_effect = lambda job, path, mode, lease: lease._stop.set() if worker.call_count == 1 else lease.close()
+            job = first_manager.start(staging / "same.pdf", "same.pdf", "default", "native", "replace")
+            deadline = time.monotonic() + 2
+            while worker.call_args is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertIsNotNone(worker.call_args)
+            old_lease = worker.call_args.args[-1]
+            DocumentImportManager(self.client.app.state.settings, other_store)
+            self.assertEqual(second_manager.get(job.id).status, "queued")
+            competing = self.client.app.state.settings.data_dir / "uploads" / "staging-second"
+            competing.mkdir(parents=True)
+            (competing / "same.pdf").write_bytes(b"shared")
+            with self.assertRaisesRegex(ValueError, "正在由其他任务处理"):
+                second_manager.start(competing / "same.pdf", "same.pdf", "default", "native", "replace")
+            with self.assertRaisesRegex(ValueError, "正在由其他任务处理"):
+                second_manager.start(competing / "same.pdf", "same.pdf", "other", "native", "replace")
+            with self.assertRaisesRegex(ValueError, "正在由其他任务处理"):
+                second_manager.delete_document("default", stable_id("document", job.file_hash))
+            with self.assertRaisesRegex(ValueError, "正在由其他任务处理"):
+                second_manager.reindex_document("default", stable_id("document", job.file_hash))
+            (competing / "same.pdf").unlink()
+            competing.rmdir()
+            with Session(other_store.engine) as session, session.begin():
+                session.get(DocumentLeaseRecord, (DOCUMENT_LEASE_SCOPE, stable_id("document", job.file_hash))).expires_at = "2000-01-01T00:00:00+00:00"
+            self.assertEqual(next(item.status for item in second_manager.list() if item.id == job.id), "failed")
+            self.assertEqual(first_manager.get(job.id).status, "failed")
+            with self.assertRaisesRegex(RuntimeError, "租约已失效"):
+                old_lease.update_job(job.id, status="completed")
+            retry = second_manager.retry(job.id)
+            self.assertEqual(retry.id, job.id)
+            self.assertEqual(retry.status, "queued")
+            with self.assertRaisesRegex(RuntimeError, "租约已失效"):
+                old_lease.update_job(job.id, status="failed")
+            self.assertEqual(second_manager.get(job.id).status, "queued")
+            with self.assertRaises(ValueError):
+                first_manager.retry(job.id)
+        self.wait_for_no_lease("default", stable_id("document", job.file_hash))
+        other_store.engine.dispose()
+
     def test_embedding_failure_does_not_write_partial_index_and_retry_cleans_up(self) -> None:
         from knowledge_rag.models import Chunk, ParsedDocument
         from knowledge_rag.pipeline import PreparedIngestion
         self.login("admin", "strong-password")
-        with patch("knowledge_rag.document_import.DocumentImportManager._run"):
+        with patch("knowledge_rag.document_import.DocumentImportManager._run", side_effect=lambda job, path, mode, lease: lease.close()):
             response = self.client.post("/api/v1/admin/document-imports", data={"knowledge_base_id": "default", "ocr_mode": "native"}, files={"file": ("fixture.pdf", b"original")})
         self.assertEqual(response.status_code, 202, response.text)
         job_id = response.json()["id"]
+        self.wait_for_no_lease("default", stable_id("document", response.json()["file_hash"]))
         path = self.client.app.state.settings.data_dir / "uploads" / job_id / "fixture.pdf"
         chunks = tuple(Chunk(str(index), "doc", "logical", "default", "fixture.pdf", 1, 1, "", index, "正文", "hash", ()) for index in range(9))
         document = ParsedDocument("doc", "logical", "fixture.pdf", response.json()["file_hash"], 1, (), ())
@@ -151,16 +218,18 @@ class AdminApiTests(unittest.TestCase):
             self.assertTrue(path.exists())
             embedder.fail = False
             milvus.fail_write = True
-            with patch("knowledge_rag.document_import.DocumentImportManager._run"):
+            with patch("knowledge_rag.document_import.DocumentImportManager._run", side_effect=lambda job, path, mode, lease: lease.close()):
                 retried = self.client.post(f"/api/v1/admin/document-imports/{job_id}/retry")
             self.assertEqual(retried.status_code, 202, retried.text)
+            self.wait_for_no_lease("default", stable_id("document", response.json()["file_hash"]))
             manager._run(job_id, path, "native")
             self.assertEqual(manager.get(job_id).status, "failed")
             self.assertEqual(milvus.rollbacks, 1)
             self.assertTrue(path.exists())
             milvus.fail_write = False
-            with patch("knowledge_rag.document_import.DocumentImportManager._run"):
+            with patch("knowledge_rag.document_import.DocumentImportManager._run", side_effect=lambda job, path, mode, lease: lease.close()):
                 self.assertEqual(self.client.post(f"/api/v1/admin/document-imports/{job_id}/retry").status_code, 202)
+            self.wait_for_no_lease("default", stable_id("document", response.json()["file_hash"]))
             manager._run(job_id, path, "native")
         self.assertEqual(manager.get(job_id).status, "completed")
         self.assertEqual(len(milvus.writes), 1)
@@ -187,7 +256,7 @@ class AdminApiTests(unittest.TestCase):
 
         milvus = FakeMilvus()
         url = "/api/v1/admin/documents"
-        with patch("knowledge_rag.document_import.DocumentImportManager._milvus", return_value=milvus), patch("knowledge_rag.document_import.DocumentImportManager._run_reindex"):
+        with patch("knowledge_rag.document_import.DocumentImportManager._milvus", return_value=milvus), patch("knowledge_rag.document_import.DocumentImportManager._run_reindex", side_effect=lambda job, doc_id, lease: lease.close()):
             self.assertEqual(self.client.get(url, params={"knowledge_base_id": "default"}).status_code, 401)
             self.login("reader", "reader-password")
             self.assertEqual(self.client.get(url, params={"knowledge_base_id": "default"}).status_code, 403)
@@ -199,6 +268,7 @@ class AdminApiTests(unittest.TestCase):
             rebuild = self.client.post(f"{url}/{doc_id}/reindex", params={"knowledge_base_id": "default"})
             self.assertEqual(rebuild.status_code, 202, rebuild.text)
             self.assertEqual(rebuild.json()["total_chunks"], 1)
+            self.wait_for_no_lease("default", doc_id)
             self.assertEqual(self.client.delete(f"{url}/{doc_id}", params={"knowledge_base_id": "default"}).status_code, 409)
             from knowledge_rag.document_import import DocumentImportManager
             DocumentImportManager(self.client.app.state.settings, self.store).update(rebuild.json()["id"], status="completed")
