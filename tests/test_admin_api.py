@@ -5,6 +5,10 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
+import hashlib
+import json
+
+from knowledge_rag.documents import stable_id
 
 from fastapi.testclient import TestClient
 
@@ -72,6 +76,60 @@ class AdminApiTests(unittest.TestCase):
             replaced = self.client.post(endpoint, data={**payload, "duplicate_mode": "replace"}, files={"file": ("a.pdf", b"data")})
             self.assertNotEqual(replaced.json()["id"], job_id)
             self.assertEqual(len(self.client.get(endpoint).json()), 2)
+
+    def test_document_management_is_admin_only_scoped_and_removes_cached_chunks(self) -> None:
+        digest = hashlib.sha256(b"fixture").hexdigest()
+        doc_id = stable_id("document", digest)
+        rows = [{"document_id": doc_id, "document_name": "测试.pdf", "page_start": 1, "page_end": 1, "section_title": "首页", "content": "正文"}]
+        cache = self.client.app.state.settings.data_dir / "normalized" / doc_id
+        cache.mkdir(parents=True)
+        (cache / "document.json").write_text(json.dumps({"file_hash": digest}))
+        (cache / "chunks.json").write_text(json.dumps([{"document_id": doc_id, "knowledge_base_id": "default", "content": "正文"}]))
+
+        class FakeMilvus:
+            def document_chunks(self, kb, requested_id=None, include_content=False):
+                return rows if kb == "default" and (requested_id is None or requested_id == doc_id) else []
+
+            def delete_document(self, kb, requested_id):
+                self.deleted = (kb, requested_id)
+                rows.clear()
+
+        milvus = FakeMilvus()
+        url = "/api/v1/admin/documents"
+        with patch("knowledge_rag.document_import.DocumentImportManager._milvus", return_value=milvus), patch("knowledge_rag.document_import.DocumentImportManager._run_reindex"):
+            self.assertEqual(self.client.get(url, params={"knowledge_base_id": "default"}).status_code, 401)
+            self.login("reader", "reader-password")
+            self.assertEqual(self.client.get(url, params={"knowledge_base_id": "default"}).status_code, 403)
+            self.login("admin", "strong-password")
+            self.assertEqual(len(self.client.get(url, params={"knowledge_base_id": "default"}).json()), 1)
+            self.assertEqual(self.client.get(f"{url}/{doc_id}", params={"knowledge_base_id": "other"}).status_code, 404)
+            detail = self.client.get(f"{url}/{doc_id}", params={"knowledge_base_id": "default"}).json()
+            self.assertEqual(detail["chunks"][0]["content"], "正文")
+            rebuild = self.client.post(f"{url}/{doc_id}/reindex", params={"knowledge_base_id": "default"})
+            self.assertEqual(rebuild.status_code, 202, rebuild.text)
+            self.assertEqual(rebuild.json()["total_chunks"], 1)
+            self.assertEqual(self.client.delete(f"{url}/{doc_id}", params={"knowledge_base_id": "default"}).status_code, 409)
+            from knowledge_rag.document_import import DocumentImportManager
+            DocumentImportManager(self.client.app.state.settings, self.store).update(rebuild.json()["id"], status="completed")
+            self.assertEqual(self.client.delete(f"{url}/{doc_id}", params={"knowledge_base_id": "default"}).status_code, 204)
+            self.assertEqual(milvus.deleted, ("default", doc_id))
+            self.assertEqual(json.loads((cache / "chunks.json").read_text()), [])
+            self.assertEqual(self.client.get(url, params={"knowledge_base_id": "default"}).json(), [])
+
+    def test_cached_chunks_preserve_other_knowledge_bases(self) -> None:
+        from knowledge_rag.models import Chunk, ParsedDocument
+        from knowledge_rag.pipeline import IngestionPipeline, PreparedIngestion
+        output = self.client.app.state.settings.data_dir / "normalized" / "shared"
+        document = ParsedDocument("shared", "logical", "shared.pdf", "hash", 1, (), ())
+        def prepared(kb: str) -> PreparedIngestion:
+            chunk = Chunk(f"chunk-{kb}", "shared", "logical", kb, "shared.pdf", 1, 1, "", 0, "内容", "hash", ())
+            return PreparedIngestion(document, (chunk,), output)
+        IngestionPipeline.save_prepared(prepared("default"))
+        IngestionPipeline.save_prepared(prepared("other"))
+        IngestionPipeline.save_prepared(prepared("default"))
+        chunks = json.loads((output / "chunks.json").read_text())
+        self.assertEqual({item["knowledge_base_id"] for item in chunks}, {"default", "other"})
+        self.assertEqual(len(chunks), 2)
 
     def test_chat_requires_login(self) -> None:
         response = self.client.post("/api/v1/chat", json={"question": "测试", "knowledge_base_id": "default"})

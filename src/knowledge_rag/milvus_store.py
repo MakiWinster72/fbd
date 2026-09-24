@@ -57,27 +57,39 @@ class MilvusChunkStore:
         self.client.flush(collection_name=self.collection)
         return len(rows)
 
-    def list_documents(self, knowledge_base_id: str) -> list[str]:
+    def document_chunks(self, knowledge_base_id: str, document_id: str | None = None, include_content: bool = False) -> list[dict[str, Any]]:
         if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", knowledge_base_id):
             raise ValueError("Invalid knowledge_base_id")
+        if document_id is not None and not re.fullmatch(r"[0-9a-f]{64}", document_id):
+            raise ValueError("Invalid document_id")
         if not self.client.has_collection(collection_name=self.collection):
             return []
+        expression = f'knowledge_base_id == "{knowledge_base_id}"'
+        if document_id is not None:
+            expression += f' and document_id == "{document_id}"'
         iterator = self.client.query_iterator(
             collection_name=self.collection,
             batch_size=1000,
-            filter=f'knowledge_base_id == "{knowledge_base_id}"',
-            output_fields=["document_id", "document_name"],
+            filter=expression,
+            output_fields=["document_id", "document_name", "page_start", "page_end", "section_title"] + (["content"] if include_content else []),
         )
-        documents: dict[str, str] = {}
+        rows: list[dict[str, Any]] = []
         try:
             while batch := iterator.next():
-                for row in batch:
-                    document_id = str(row.get("document_id") or "")
-                    if document_id:
-                        documents[document_id] = str(row.get("document_name") or "未知文档")
+                rows.extend(batch)
         finally:
             iterator.close()
+        return rows
+
+    def list_documents(self, knowledge_base_id: str) -> list[str]:
+        documents = {row["document_id"]: row.get("document_name") or "未知文档" for row in self.document_chunks(knowledge_base_id)}
         return sorted(documents.values())
+
+    def delete_document(self, knowledge_base_id: str, document_id: str) -> None:
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", knowledge_base_id) or not re.fullmatch(r"[0-9a-f]{64}", document_id):
+            raise ValueError("Invalid document identifier")
+        self.client.delete(collection_name=self.collection, filter=f'knowledge_base_id == "{knowledge_base_id}" and document_id == "{document_id}"')
+        self.client.flush(collection_name=self.collection)
 
     def search(self, vector: list[float], limit: int = 10, knowledge_base_id: str | None = None) -> list[dict[str, Any]]:
         if knowledge_base_id and not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", knowledge_base_id):

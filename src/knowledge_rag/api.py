@@ -425,6 +425,39 @@ def create_app(
         user = store.get_user(user_id)
         return AdminUserResponse.from_user_with_access(user, access)  # type: ignore[arg-type]
 
+    @app.get("/api/v1/admin/documents")
+    async def list_admin_documents(knowledge_base_id: KnowledgeBaseId, _: User = Depends(require_admin)) -> list[dict[str, object]]:
+        return await run_in_threadpool(import_manager.documents, knowledge_base_id)
+
+    @app.get("/api/v1/admin/documents/{document_id}")
+    async def get_admin_document(document_id: str, knowledge_base_id: KnowledgeBaseId, _: User = Depends(require_admin)) -> dict[str, object]:
+        try:
+            document = await run_in_threadpool(import_manager.document, knowledge_base_id, document_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if document is None:
+            raise HTTPException(status_code=404, detail="文档不存在")
+        return document
+
+    @app.delete("/api/v1/admin/documents/{document_id}", status_code=204)
+    async def delete_admin_document(document_id: str, knowledge_base_id: KnowledgeBaseId, _: User = Depends(require_admin)) -> Response:
+        try:
+            deleted = await run_in_threadpool(import_manager.delete_document, knowledge_base_id, document_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if not deleted:
+            raise HTTPException(status_code=404, detail="文档不存在")
+        return Response(status_code=204)
+
+    @app.post("/api/v1/admin/documents/{document_id}/reindex", response_model=ImportJob, status_code=202)
+    async def reindex_admin_document(document_id: str, knowledge_base_id: KnowledgeBaseId, _: User = Depends(require_admin)) -> ImportJob:
+        try:
+            return await run_in_threadpool(import_manager.reindex_document, knowledge_base_id, document_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="文档不存在") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.get("/api/v1/admin/document-imports", response_model=list[ImportJob])
     async def list_document_imports(_: User = Depends(require_admin)) -> list[ImportJob]:
         return await run_in_threadpool(import_manager.list)

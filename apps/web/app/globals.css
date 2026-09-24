@@ -761,6 +761,14 @@
   .intake-job-row { padding: 12px 0; display: grid; gap: 5px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
   .intake-job-row strong { color: var(--archive-blue); font-size: 12px; }
   .intake-job-row span { color: var(--graphite); font-size: 11px; }
+  .intake-document-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  .intake-document-actions button { padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 4px; background: transparent; color: var(--archive-blue); cursor: pointer; }
+  .intake-document-actions button:hover { background: var(--paper); }
+  .intake-document-actions button:disabled { opacity: .5; cursor: wait; }
+  .intake-document-detail { min-width: 0; margin-top: 8px; }
+  .intake-document-detail details { padding: 10px 0; border-top: 1px solid var(--line); }
+  .intake-document-detail summary { cursor: pointer; }
+  .intake-document-detail pre { max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
   .intake-review-note { padding: 10px 12px; color: #176a57; background: #eaf7f3; border: 1px solid #bfe1d6; }
 
   @media (max-width: 760px) {

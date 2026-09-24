@@ -1,7 +1,7 @@
 "use client";
 
 import { DragEvent, useEffect, useRef, useState } from "react";
-import { getCurrentUser, getDocumentImport, getMineruStatus, listAdminKnowledgeBases, listDocumentImports, listModelProfiles, uploadDocument, type DocumentImportJob, type KnowledgeBase, type ModelProfile } from "@/lib/api";
+import { deleteIndexedDocument, getCurrentUser, getDocumentImport, getIndexedDocument, getMineruStatus, listAdminKnowledgeBases, listDocumentImports, listIndexedDocuments, listModelProfiles, reindexIndexedDocument, uploadDocument, type DocumentImportJob, type IndexedDocument, type IndexedDocumentDetail, type KnowledgeBase, type ModelProfile } from "@/lib/api";
 
 type IntakeStatus = "ready" | "blocked";
 
@@ -60,6 +60,11 @@ export default function AdminDocumentsPage() {
   const [jobs, setJobs] = useState<DocumentImportJob[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [documents, setDocuments] = useState<IndexedDocument[]>([]);
+  const [documentDetail, setDocumentDetail] = useState<IndexedDocumentDetail | null>(null);
+  const [documentError, setDocumentError] = useState("");
+  const [documentBusy, setDocumentBusy] = useState("");
+  const [documentRevision, setDocumentRevision] = useState(0);
 
   useEffect(() => {
     getCurrentUser().then(async (user) => {
@@ -76,7 +81,17 @@ export default function AdminDocumentsPage() {
   }, []);
 
   useEffect(() => {
-    const active = jobs.filter((job) => !["completed", "failed"].includes(job.status));
+    if (!knowledgeBaseId) return;
+    let cancelled = false;
+    setDocumentDetail(null);
+    listIndexedDocuments(knowledgeBaseId).then((items) => {
+      if (!cancelled) { setDocuments(items); setDocumentError(""); }
+    }).catch((reason) => { if (!cancelled) setDocumentError(reason instanceof Error ? reason.message : "无法加载文档清单"); });
+    return () => { cancelled = true; };
+  }, [knowledgeBaseId, documentRevision, jobs.filter((job) => job.status === "completed" || job.status === "deleted").map((job) => `${job.id}:${job.status}`).join(",")]);
+
+  useEffect(() => {
+    const active = jobs.filter((job) => !["completed", "failed", "deleted"].includes(job.status));
     if (!active.length) return;
     const timer = window.setTimeout(async () => {
       const updates = await Promise.allSettled(active.map((job) => getDocumentImport(job.id)));
@@ -88,6 +103,37 @@ export default function AdminDocumentsPage() {
     }, 1800);
     return () => window.clearTimeout(timer);
   }, [jobs]);
+
+  async function showDocument(documentId: string) {
+    if (documentDetail?.document_id === documentId) { setDocumentDetail(null); return; }
+    setDocumentError("");
+    try { setDocumentDetail(await getIndexedDocument(knowledgeBaseId, documentId)); }
+    catch (reason) { setDocumentError(reason instanceof Error ? reason.message : "无法读取文档详情"); }
+  }
+
+  async function removeDocument(item: IndexedDocument) {
+    if (!window.confirm(`确认从当前知识库删除《${item.document_name}》？此操作会清除索引和可重建的切块，无法撤销。`)) return;
+    setDocumentBusy(item.document_id);
+    setDocumentError("");
+    try {
+      await deleteIndexedDocument(knowledgeBaseId, item.document_id);
+      setDocumentDetail(null);
+      setDocumentRevision((value) => value + 1);
+      listDocumentImports().then(setJobs).catch(() => {});
+    } catch (reason) { setDocumentError(reason instanceof Error ? reason.message : "删除失败"); }
+    finally { setDocumentBusy(""); }
+  }
+
+  async function reindexDocument(item: IndexedDocument) {
+    setDocumentBusy(item.document_id);
+    setDocumentError("");
+    try {
+      const job = await reindexIndexedDocument(knowledgeBaseId, item.document_id);
+      setJobs((current) => [job, ...current]);
+      setSelectionNotice(`《${item.document_name}》已提交重新向量化任务，请查看下方进度。`);
+    } catch (reason) { setDocumentError(reason instanceof Error ? reason.message : "重新向量化失败"); }
+    finally { setDocumentBusy(""); }
+  }
 
   async function startImport() {
     if (!readyFiles.length || !knowledgeBaseId || uploading) return;
@@ -150,7 +196,7 @@ export default function AdminDocumentsPage() {
       </header>
 
       {error ? <p className="admin-error" role="alert">{error}</p> : null}
-      <p className={`intake-service-status ${mineruStatus}`} role="status">MinerU 服务：{mineruStatus === "checking" ? "正在检查…" : mineruStatus === "reachable" ? "端口可连接（不代表解析任务已成功）" : "无法连接；请启动服务并刷新页面。当前页面尚未提供上传能力。"}</p>
+      <p className={`intake-service-status ${mineruStatus}`} role="status">MinerU 服务：{mineruStatus === "checking" ? "正在检查…" : mineruStatus === "reachable" ? "端口可连接（不代表解析任务已成功）" : "无法连接；PDF 需启动服务或选择纯文本层模式。"}</p>
 
       <ol className="intake-stage-rail" aria-label="文件导入流程">
         {["选择文件", "解析内容", "生成切块", "写入向量", "完成核验"].map((label, index) => (
@@ -251,12 +297,33 @@ export default function AdminDocumentsPage() {
           <p className="intake-footnote">PDF 默认通过 MinerU 解析；纯文本层模式可跳过 MinerU。任务失败会显示原因，可重新选择文件重试。</p>
         </aside>
       </section>
+      <section className="intake-panel intake-jobs" aria-label="已入库文档">
+        <div className="intake-panel-heading"><div><p className="section-kicker">INDEXED DOCUMENTS</p><h2>已入库文档 · {documents.length}</h2></div></div>
+        <p className="intake-footnote">显示当前知识库、当前向量索引中的全部文件。重新向量化使用保存的切块；如需重新解析原文件，请重新上传。</p>
+        {documentError ? <p className="admin-error" role="alert">{documentError}</p> : null}
+        {!documents.length && !documentError ? <p className="intake-footnote">当前知识库尚无已索引文档。</p> : documents.map((item) => (
+          <article className="intake-job-row" key={item.document_id}>
+            <strong>{item.document_name}</strong>
+            <span>{item.chunk_count} 个切块 · {item.page_count} 页 · {knowledgeBaseId}</span>
+            <div className="intake-document-actions">
+              <button type="button" disabled={!!documentBusy} onClick={() => void showDocument(item.document_id)}>查看详情</button>
+              <button type="button" disabled={!!documentBusy} onClick={() => void reindexDocument(item)}>重新向量化</button>
+              <button type="button" disabled={!!documentBusy} onClick={() => void removeDocument(item)}>删除文档</button>
+            </div>
+            {documentDetail?.document_id === item.document_id ? (
+              <div className="intake-document-detail">{documentDetail.chunks.map((chunk, index) => (
+                <details key={`${index}-${chunk.page_start}`}><summary>第 {chunk.page_start}–{chunk.page_end} 页 · {chunk.section_title || `切块 ${index + 1}`}</summary><pre>{chunk.content}</pre></details>
+              ))}</div>
+            ) : null}
+          </article>
+        ))}
+      </section>
       <section className="intake-panel intake-jobs" aria-live="polite">
         <div className="intake-panel-heading"><div><p className="section-kicker">IMPORT HISTORY</p><h2>导入任务</h2></div></div>
         {!jobs.length ? <p className="intake-footnote">尚无导入任务。</p> : jobs.map((job) => (
           <article className="intake-job-row" key={job.id}>
             <strong>{job.file_name}</strong>
-            <span>{({ queued: "等待处理", parsing: "正在解析", embedding: "正在向量化", completed: "已完成", failed: "失败" } as const)[job.status]} · {job.completed_chunks}/{job.total_chunks || "?"} 切块 · {job.knowledge_base_id}</span>
+            <span>{({ queued: "等待处理", parsing: "正在解析", embedding: "正在向量化", completed: "已完成", failed: "失败", deleted: "已删除" } as const)[job.status]} · {job.completed_chunks}/{job.total_chunks || "?"} 切块 · {job.knowledge_base_id}</span>
             {job.error ? <p className="form-error">{job.error}</p> : null}
           </article>
         ))}

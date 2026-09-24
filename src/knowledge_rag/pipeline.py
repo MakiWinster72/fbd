@@ -52,9 +52,16 @@ class IngestionPipeline:
         (prepared.output_dir / "document.json").write_text(
             json.dumps(asdict(prepared.document), ensure_ascii=False, indent=2),
         )
-        (prepared.output_dir / "chunks.json").write_text(
-            json.dumps([asdict(chunk) for chunk in prepared.chunks], ensure_ascii=False, indent=2),
-        )
+        chunks_path = prepared.output_dir / "chunks.json"
+        incoming = [asdict(chunk) for chunk in prepared.chunks]
+        # The same file hash can be indexed in several knowledge bases; do not
+        # overwrite another base's cached chunks when importing it again.
+        existing = json.loads(chunks_path.read_text()) if chunks_path.exists() else []
+        targets = {item["knowledge_base_id"] for item in incoming}
+        chunks_path.write_text(json.dumps(
+            [item for item in existing if item.get("knowledge_base_id") not in targets] + incoming,
+            ensure_ascii=False, indent=2,
+        ))
 
     def embed(self, prepared: PreparedIngestion) -> PreparedIngestion:
         embedder = OllamaEmbedder(

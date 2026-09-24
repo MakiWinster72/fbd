@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from knowledge_rag.documents import sha256_file
+from knowledge_rag.documents import sha256_file, stable_id
 import json
 import mimetypes
 import threading
@@ -126,6 +126,115 @@ class DocumentImportManager:
         thread = threading.Thread(target=self._run, args=(job_id, path, ocr_mode), daemon=True, name=f"document-import-{job_id[:8]}")
         thread.start()
         return result
+
+    def _milvus(self) -> MilvusChunkStore:
+        collection = self.store.get_setting("active_collection_name", self.settings.milvus_collection)
+        dim = int(self.store.get_setting("active_vector_dim", str(self.settings.milvus_vector_dim)))
+        return MilvusChunkStore(self.settings.milvus_uri, collection, dim)
+
+    def documents(self, knowledge_base_id: str) -> list[dict[str, object]]:
+        rows = self._milvus().document_chunks(knowledge_base_id)
+        documents: dict[str, dict[str, object]] = {}
+        for row in rows:
+            doc_id = str(row["document_id"])
+            entry = documents.setdefault(doc_id, {"document_id": doc_id, "document_name": row.get("document_name") or "未知文档", "chunk_count": 0, "page_count": 0})
+            entry["chunk_count"] = int(entry["chunk_count"]) + 1
+            entry["page_count"] = max(int(entry["page_count"]), int(row.get("page_end") or 0))
+        return sorted(documents.values(), key=lambda item: str(item["document_name"]))
+
+    def document(self, knowledge_base_id: str, document_id: str, include_content: bool = True) -> dict[str, object] | None:
+        rows = self._milvus().document_chunks(knowledge_base_id, document_id, include_content=include_content)
+        if not rows:
+            return None
+        return {
+            "document_id": document_id,
+            "document_name": rows[0].get("document_name") or "未知文档",
+            "chunk_count": len(rows),
+            "page_count": max(int(row.get("page_end") or 0) for row in rows),
+            "chunks": sorted([{"page_start": row.get("page_start") or 0, "page_end": row.get("page_end") or 0, "section_title": row.get("section_title") or "", "content": row.get("content") or ""} for row in rows], key=lambda item: int(item["page_start"])),
+        }
+
+    def _cached_chunks(self, knowledge_base_id: str, document_id: str) -> tuple[Path, list[dict]]:
+        path = self.settings.data_dir / "normalized" / document_id / "chunks.json"
+        if not path.is_file():
+            return path, []
+        chunks = json.loads(path.read_text())
+        return path, [item for item in chunks if item.get("knowledge_base_id") == knowledge_base_id and item.get("document_id") == document_id]
+
+    def delete_document(self, knowledge_base_id: str, document_id: str) -> bool:
+        if self.document(knowledge_base_id, document_id, include_content=False) is None:
+            return False
+        digest_jobs = self._jobs_for_document(knowledge_base_id, document_id)
+        if any(item.status in {"queued", "parsing", "embedding"} for item in digest_jobs):
+            raise ValueError("文档正在导入，请完成后再删除")
+        path, _ = self._cached_chunks(knowledge_base_id, document_id)
+        self._milvus().delete_document(knowledge_base_id, document_id)
+        if path.is_file():
+            chunks = json.loads(path.read_text())
+            remaining = [item for item in chunks if not (item.get("document_id") == document_id and item.get("knowledge_base_id") == knowledge_base_id)]
+            path.write_text(json.dumps(remaining, ensure_ascii=False, indent=2))
+        for item in digest_jobs:
+            if item.status == "completed":
+                self.update(item.id, status="deleted")
+        return True
+
+    def _jobs_for_document(self, knowledge_base_id: str, document_id: str) -> list[ImportJob]:
+        with Session(self.store.engine) as session:
+            records = session.scalars(select(DocumentImportRecord).where(DocumentImportRecord.knowledge_base_id == knowledge_base_id)).all()
+            return [to_job(record) for record in records if stable_id("document", record.file_hash) == document_id]
+
+    def reindex_document(self, knowledge_base_id: str, document_id: str) -> ImportJob:
+        document = self.document(knowledge_base_id, document_id, include_content=False)
+        if document is None:
+            raise KeyError("文档不存在")
+        _, chunks = self._cached_chunks(knowledge_base_id, document_id)
+        if not chunks:
+            raise ValueError("未保留可重新向量化的切块，请重新上传原文件")
+        if any(item.status in {"queued", "parsing", "embedding"} for item in self._jobs_for_document(knowledge_base_id, document_id)):
+            raise ValueError("文档已有进行中的任务")
+        metadata = self.settings.data_dir / "normalized" / document_id / "document.json"
+        file_hash = json.loads(metadata.read_text()).get("file_hash", "") if metadata.is_file() else ""
+        if not file_hash:
+            file_hash = next((item.file_hash for item in self._jobs_for_document(knowledge_base_id, document_id)), "")
+        if not file_hash or stable_id("document", file_hash) != document_id:
+            raise ValueError("文档缺少有效的源文件标识，请重新上传原文件")
+        stamp = now()
+        job_id = str(uuid4())
+        with Session(self.store.engine) as session, session.begin():
+            session.add(DocumentImportRecord(id=job_id, file_name=str(document["document_name"]), knowledge_base_id=knowledge_base_id,
+                                             file_hash=file_hash,
+                                             status="queued", completed_chunks=0, total_chunks=len(chunks), error="", created_at=stamp, updated_at=stamp))
+        thread = threading.Thread(target=self._run_reindex, args=(job_id, document_id), daemon=True, name=f"document-reindex-{job_id[:8]}")
+        thread.start()
+        return self.get(job_id)  # type: ignore[return-value]
+
+    def _run_reindex(self, job_id: str, document_id: str) -> None:
+        job = self.get(job_id)
+        if job is None:
+            return
+        try:
+            profile = self.store.get_profile(self.store.get_setting("active_embedding_profile_id"))
+            if profile is None or not profile.enabled:
+                raise RuntimeError("尚未启用 Embedding 配置")
+            collection = self.store.get_setting("active_collection_name", self.settings.milvus_collection)
+            _, chunks = self._cached_chunks(job.knowledge_base_id, document_id)
+            if not chunks:
+                raise RuntimeError("缓存切块已不存在")
+            from knowledge_rag.models import Chunk
+            embedder = create_embedder(profile)
+            milvus = self._milvus()
+            self.update(job_id, status="embedding")
+            batch_size = max(1, int(profile.options.get("batch_size", 8)))
+            for offset in range(0, len(chunks), batch_size):
+                if self.store.get_setting("active_collection_name", self.settings.milvus_collection) != collection:
+                    raise RuntimeError("Embedding 索引已切换，请重新尝试")
+                batch = chunks[offset:offset + batch_size]
+                vectors = embedder.embed([str(item["content"]) for item in batch])
+                milvus.upsert([Chunk(**{**item, "block_types": tuple(item.get("block_types") or ()), "vector": None}).with_vector(vector) for item, vector in zip(batch, vectors, strict=True)])
+                self.update(job_id, completed_chunks=offset + len(batch))
+            self.update(job_id, status="completed")
+        except Exception as exc:
+            self.update(job_id, status="failed", error=str(exc)[:1000])
 
     def _run(self, job_id: str, path: Path, ocr_mode: str) -> None:
         job = self.get(job_id)

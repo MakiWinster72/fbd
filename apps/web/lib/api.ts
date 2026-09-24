@@ -149,13 +149,32 @@ export type DocumentImportJob = {
   file_name: string;
   knowledge_base_id: string;
   file_hash: string;
-  status: "queued" | "parsing" | "embedding" | "completed" | "failed";
+  status: "queued" | "parsing" | "embedding" | "completed" | "failed" | "deleted";
   completed_chunks: number;
   total_chunks: number;
   error: string;
   created_at: string;
   updated_at: string;
 };
+
+export type IndexedDocument = { document_id: string; document_name: string; chunk_count: number; page_count: number };
+export type IndexedDocumentDetail = IndexedDocument & { chunks: { page_start: number; page_end: number; section_title: string; content: string }[] };
+
+export function listIndexedDocuments(knowledgeBaseId: string): Promise<IndexedDocument[]> {
+  return apiRequest(`/api/v1/admin/documents?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}`);
+}
+
+export function getIndexedDocument(knowledgeBaseId: string, documentId: string): Promise<IndexedDocumentDetail> {
+  return apiRequest(`/api/v1/admin/documents/${encodeURIComponent(documentId)}?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}`);
+}
+
+export function deleteIndexedDocument(knowledgeBaseId: string, documentId: string): Promise<void> {
+  return apiRequest(`/api/v1/admin/documents/${encodeURIComponent(documentId)}?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}`, { method: "DELETE" });
+}
+
+export function reindexIndexedDocument(knowledgeBaseId: string, documentId: string): Promise<DocumentImportJob> {
+  return apiRequest(`/api/v1/admin/documents/${encodeURIComponent(documentId)}/reindex?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}`, { method: "POST" });
+}
 
 export async function uploadDocument(file: File, knowledgeBaseId: string, ocrMode: string, duplicateMode: string): Promise<DocumentImportJob> {
   const body = new FormData();
