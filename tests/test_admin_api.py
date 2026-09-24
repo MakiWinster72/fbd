@@ -77,6 +77,97 @@ class AdminApiTests(unittest.TestCase):
             self.assertNotEqual(replaced.json()["id"], job_id)
             self.assertEqual(len(self.client.get(endpoint).json()), 2)
 
+    def test_failed_import_retains_file_and_retries_original_job(self) -> None:
+        endpoint = "/api/v1/admin/document-imports"
+        self.login("admin", "strong-password")
+        self.assertEqual(self.client.post(f"{endpoint}/missing/retry").status_code, 404)
+        with patch("knowledge_rag.document_import.DocumentImportManager._run"):
+            first = self.client.post(endpoint, data={"knowledge_base_id": "default", "ocr_mode": "native"}, files={"file": ("fixture.pdf", b"original")})
+            self.assertEqual(first.status_code, 202, first.text)
+            job_id = first.json()["id"]
+            path = self.client.app.state.settings.data_dir / "uploads" / job_id / "fixture.pdf"
+            self.assertEqual(path.read_bytes(), b"original")
+            self.assertEqual(json.loads((path.parent / "options.json").read_text())["ocr_mode"], "native")
+            collision = self.client.post(endpoint, data={"knowledge_base_id": "default", "duplicate_mode": "replace"}, files={"file": ("fixture.pdf", b"original")})
+            self.assertEqual(collision.status_code, 409)
+            self.assertEqual(path.read_bytes(), b"original")
+            manager = self.client.app.state.document_import_manager
+            from knowledge_rag.document_import import DocumentImportManager
+            DocumentImportManager(self.client.app.state.settings, self.store)
+            self.assertEqual(manager.get(job_id).status, "failed")
+            self.assertEqual(path.read_bytes(), b"original")
+            retry = self.client.post(f"{endpoint}/{job_id}/retry")
+            self.assertEqual(retry.status_code, 202, retry.text)
+            self.assertEqual(retry.json()["id"], job_id)
+            self.assertEqual(retry.json()["status"], "queued")
+            self.assertEqual(len(self.client.get(endpoint).json()), 1)
+            self.assertEqual(self.client.post(f"{endpoint}/{job_id}/retry").status_code, 409)
+            manager.update(job_id, status="failed")
+            path.unlink()
+            self.assertEqual(self.client.post(f"{endpoint}/{job_id}/retry").status_code, 409)
+
+    def test_embedding_failure_does_not_write_partial_index_and_retry_cleans_up(self) -> None:
+        from knowledge_rag.models import Chunk, ParsedDocument
+        from knowledge_rag.pipeline import PreparedIngestion
+        self.login("admin", "strong-password")
+        with patch("knowledge_rag.document_import.DocumentImportManager._run"):
+            response = self.client.post("/api/v1/admin/document-imports", data={"knowledge_base_id": "default", "ocr_mode": "native"}, files={"file": ("fixture.pdf", b"original")})
+        self.assertEqual(response.status_code, 202, response.text)
+        job_id = response.json()["id"]
+        path = self.client.app.state.settings.data_dir / "uploads" / job_id / "fixture.pdf"
+        chunks = tuple(Chunk(str(index), "doc", "logical", "default", "fixture.pdf", 1, 1, "", index, "正文", "hash", ()) for index in range(9))
+        document = ParsedDocument("doc", "logical", "fixture.pdf", response.json()["file_hash"], 1, (), ())
+        prepared = PreparedIngestion(document, chunks, self.client.app.state.settings.data_dir / "normalized" / "doc")
+        class Embedder:
+            def __init__(self):
+                self.calls = 0
+                self.fail = True
+            def embed(self, texts):
+                self.calls += 1
+                if self.fail and self.calls == 2:
+                    raise RuntimeError("embedding interrupted")
+                return [[0.1, 0.2] for _ in texts]
+        class Milvus:
+            def __init__(self):
+                self.writes = []
+                self.fail_write = False
+                self.rollbacks = 0
+            def document_chunks(self, kb, doc_id):
+                return []
+            def upsert(self, chunks):
+                self.writes.append(chunks)
+                if self.fail_write:
+                    raise RuntimeError("Milvus write interrupted")
+            def delete_document(self, kb, doc_id):
+                self.rollbacks += 1
+                self.writes.clear()
+        embedder = Embedder()
+        milvus = Milvus()
+        manager = self.client.app.state.document_import_manager
+        with patch("knowledge_rag.document_import.IngestionPipeline.prepare", return_value=prepared), patch("knowledge_rag.document_import.create_embedder", return_value=embedder), patch("knowledge_rag.document_import.MilvusChunkStore", return_value=milvus):
+            manager._run(job_id, path, "native")
+            self.assertEqual(manager.get(job_id).status, "failed")
+            self.assertEqual(len(milvus.writes), 0)
+            self.assertTrue(path.exists())
+            embedder.fail = False
+            milvus.fail_write = True
+            with patch("knowledge_rag.document_import.DocumentImportManager._run"):
+                retried = self.client.post(f"/api/v1/admin/document-imports/{job_id}/retry")
+            self.assertEqual(retried.status_code, 202, retried.text)
+            manager._run(job_id, path, "native")
+            self.assertEqual(manager.get(job_id).status, "failed")
+            self.assertEqual(milvus.rollbacks, 1)
+            self.assertTrue(path.exists())
+            milvus.fail_write = False
+            with patch("knowledge_rag.document_import.DocumentImportManager._run"):
+                self.assertEqual(self.client.post(f"/api/v1/admin/document-imports/{job_id}/retry").status_code, 202)
+            manager._run(job_id, path, "native")
+        self.assertEqual(manager.get(job_id).status, "completed")
+        self.assertEqual(len(milvus.writes), 1)
+        self.assertEqual(len(milvus.writes[0]), 9)
+        self.assertFalse(path.exists())
+        self.assertFalse(path.parent.exists())
+
     def test_document_management_is_admin_only_scoped_and_removes_cached_chunks(self) -> None:
         digest = hashlib.sha256(b"fixture").hexdigest()
         doc_id = stable_id("document", digest)

@@ -1,7 +1,7 @@
 "use client";
 
 import { DragEvent, useEffect, useRef, useState } from "react";
-import { deleteIndexedDocument, getCurrentUser, getDocumentImport, getIndexedDocument, getMineruStatus, listAdminKnowledgeBases, listDocumentImports, listIndexedDocuments, listModelProfiles, reindexIndexedDocument, uploadDocument, type DocumentImportJob, type IndexedDocument, type IndexedDocumentDetail, type KnowledgeBase, type ModelProfile } from "@/lib/api";
+import { deleteIndexedDocument, getCurrentUser, getDocumentImport, getIndexedDocument, getMineruStatus, listAdminKnowledgeBases, listDocumentImports, listIndexedDocuments, listModelProfiles, reindexIndexedDocument, retryDocumentImport, uploadDocument, type DocumentImportJob, type IndexedDocument, type IndexedDocumentDetail, type KnowledgeBase, type ModelProfile } from "@/lib/api";
 
 type IntakeStatus = "ready" | "blocked";
 
@@ -133,6 +133,17 @@ export default function AdminDocumentsPage() {
       setSelectionNotice(`《${item.document_name}》已提交重新向量化任务，请查看下方进度。`);
     } catch (reason) { setDocumentError(reason instanceof Error ? reason.message : "重新向量化失败"); }
     finally { setDocumentBusy(""); }
+  }
+
+  async function retryImport(job: DocumentImportJob) {
+    setDocumentBusy(job.id);
+    setUploadError("");
+    try {
+      const updated = await retryDocumentImport(job.id);
+      setJobs((current) => current.map((item) => item.id === updated.id ? updated : item));
+    } catch (reason) {
+      setUploadError(`${job.file_name}：${reason instanceof Error ? reason.message : "重试失败"}`);
+    } finally { setDocumentBusy(""); }
   }
 
   async function startImport() {
@@ -294,7 +305,7 @@ export default function AdminDocumentsPage() {
           {uploadError ? <p className="admin-error" role="alert">{uploadError}</p> : null}
           <button className="intake-review-button" type="button" disabled={!readyFiles.length || !knowledgeBaseId || uploading} onClick={() => setReviewed(true)}>检查导入清单</button>
           <button className="intake-review-button" type="button" disabled={!reviewed || !readyFiles.length || !knowledgeBaseId || !embeddingProfile || uploading || (ocrMode !== "native" && mineruStatus !== "reachable")} onClick={startImport}>{uploading ? "正在上传…" : "开始导入"}</button>
-          <p className="intake-footnote">PDF 默认通过 MinerU 解析；纯文本层模式可跳过 MinerU。任务失败会显示原因，可重新选择文件重试。</p>
+          <p className="intake-footnote">PDF 默认通过 MinerU 解析；纯文本层模式可跳过 MinerU。任务失败会保留上传文件供原任务重试；旧任务若未保留文件，请重新选择文件上传。</p>
         </aside>
       </section>
       <section className="intake-panel intake-jobs" aria-label="已入库文档">
@@ -325,6 +336,7 @@ export default function AdminDocumentsPage() {
             <strong>{job.file_name}</strong>
             <span>{({ queued: "等待处理", parsing: "正在解析", embedding: "正在向量化", completed: "已完成", failed: "失败", deleted: "已删除" } as const)[job.status]} · {job.completed_chunks}/{job.total_chunks || "?"} 切块 · {job.knowledge_base_id}</span>
             {job.error ? <p className="form-error">{job.error}</p> : null}
+            {job.status === "failed" ? <button className="intake-retry-button" type="button" disabled={!!documentBusy} onClick={() => void retryImport(job)}>重试导入</button> : null}
           </article>
         ))}
       </section>

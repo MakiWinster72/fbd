@@ -193,6 +193,10 @@ export function getDocumentImport(id: string): Promise<DocumentImportJob> {
   return apiRequest(`/api/v1/admin/document-imports/${encodeURIComponent(id)}`);
 }
 
+export function retryDocumentImport(id: string): Promise<DocumentImportJob> {
+  return apiRequest(`/api/v1/admin/document-imports/${encodeURIComponent(id)}/retry`, { method: "POST" });
+}
+
 export function getMineruStatus(): Promise<{ reachable: boolean }> {
   return apiRequest("/api/v1/admin/mineru-status");
 }

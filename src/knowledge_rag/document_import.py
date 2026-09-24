@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from knowledge_rag.documents import sha256_file, stable_id
 import json
+import logging
 import mimetypes
 import threading
 import urllib.request
@@ -19,6 +20,9 @@ from knowledge_rag.db import DocumentImportRecord
 from knowledge_rag.milvus_store import MilvusChunkStore
 from knowledge_rag.pipeline import IngestionPipeline
 from knowledge_rag.providers import create_embedder
+
+
+logger = logging.getLogger(__name__)
 
 
 def now() -> str:
@@ -88,6 +92,7 @@ class DocumentImportManager:
     def __init__(self, settings: Settings, store: AdminStore) -> None:
         self.settings = settings
         self.store = store
+        self._lock = threading.RLock()
         with Session(store.engine) as session, session.begin():
             session.execute(update(DocumentImportRecord).where(DocumentImportRecord.status.in_(["queued", "parsing", "embedding"])).values(status="failed", error="服务重启导致任务中断", updated_at=now()))
 
@@ -105,27 +110,78 @@ class DocumentImportManager:
             session.execute(update(DocumentImportRecord).where(DocumentImportRecord.id == job_id).values(**values, updated_at=now()))
 
     def start(self, path: Path, file_name: str, knowledge_base_id: str, ocr_mode: str, duplicate_mode: str) -> ImportJob:
-        digest = sha256_file(path)
-        with Session(self.store.engine) as session, session.begin():
-            previous = session.scalars(select(DocumentImportRecord).where(
-                DocumentImportRecord.knowledge_base_id == knowledge_base_id,
-                DocumentImportRecord.file_hash == digest,
-                DocumentImportRecord.status.in_(["queued", "parsing", "embedding", "completed"]),
-            )).first()
+        with self._lock:
+            digest = sha256_file(path)
+            with Session(self.store.engine) as session:
+                previous = session.scalars(select(DocumentImportRecord).where(
+                    DocumentImportRecord.knowledge_base_id == knowledge_base_id,
+                    DocumentImportRecord.file_hash == digest,
+                    DocumentImportRecord.status.in_(["queued", "parsing", "embedding", "completed"]),
+                ).order_by(DocumentImportRecord.created_at.desc())).first()
+            if previous and previous.status in {"queued", "parsing", "embedding"}:
+                if duplicate_mode == "replace":
+                    raise ValueError("相同文件正在处理，请等待任务完成")
+                path.unlink(missing_ok=True)
+                path.parent.rmdir()
+                return to_job(previous)
             if previous and duplicate_mode == "skip":
                 path.unlink(missing_ok=True)
                 path.parent.rmdir()
                 return to_job(previous)
             job_id = str(uuid4())
-            stamp = now()
-            record = DocumentImportRecord(id=job_id, file_name=file_name, knowledge_base_id=knowledge_base_id,
-                                          file_hash=digest, status="queued", completed_chunks=0, total_chunks=0,
-                                          error="", created_at=stamp, updated_at=stamp)
-            session.add(record)
-            result = to_job(record)
-        thread = threading.Thread(target=self._run, args=(job_id, path, ocr_mode), daemon=True, name=f"document-import-{job_id[:8]}")
-        thread.start()
-        return result
+            destination = self.settings.data_dir / "uploads" / job_id
+            destination.mkdir(parents=True, exist_ok=False)
+            retained = destination / file_name
+            try:
+                path.replace(retained)
+                (destination / "options.json").write_text(json.dumps({"ocr_mode": ocr_mode}))
+                if path.parent != destination:
+                    path.parent.rmdir()
+                stamp = now()
+                with Session(self.store.engine) as session, session.begin():
+                    record = DocumentImportRecord(id=job_id, file_name=file_name, knowledge_base_id=knowledge_base_id,
+                                                  file_hash=digest, status="queued", completed_chunks=0, total_chunks=0,
+                                                  error="", created_at=stamp, updated_at=stamp)
+                    session.add(record)
+                    result = to_job(record)
+            except Exception:
+                if retained.exists():
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    retained.replace(path)
+                (destination / "options.json").unlink(missing_ok=True)
+                destination.rmdir()
+                raise
+            thread = threading.Thread(target=self._run, args=(job_id, retained, ocr_mode), daemon=True, name=f"document-import-{job_id[:8]}")
+            thread.start()
+            return result
+
+    def retry(self, job_id: str) -> ImportJob:
+        with self._lock:
+            job = self.get(job_id)
+            if job is None:
+                raise KeyError("导入任务不存在")
+            if job.status != "failed":
+                raise ValueError("仅失败的任务可以重试")
+            path = self.settings.data_dir / "uploads" / job.id / job.file_name
+            if not path.is_file() or sha256_file(path) != job.file_hash:
+                raise ValueError("原文件未保留或内容已变化，请重新选择文件上传")
+            options_path = path.parent / "options.json"
+            options = json.loads(options_path.read_text()) if options_path.is_file() else {}
+            ocr_mode = options.get("ocr_mode", "auto")
+            if ocr_mode not in {"auto", "force", "native"}:
+                raise ValueError("解析设置无效，请重新上传")
+            with Session(self.store.engine) as session:
+                concurrent = session.scalars(select(DocumentImportRecord).where(
+                    DocumentImportRecord.knowledge_base_id == job.knowledge_base_id,
+                    DocumentImportRecord.file_hash == job.file_hash,
+                    DocumentImportRecord.status.in_(["queued", "parsing", "embedding"]),
+                )).first()
+            if concurrent:
+                raise ValueError("相同文件正在处理，请等待任务完成")
+            self.update(job_id, status="queued", completed_chunks=0, total_chunks=0, error="")
+            thread = threading.Thread(target=self._run, args=(job_id, path, ocr_mode), daemon=True, name=f"document-import-{job_id[:8]}")
+            thread.start()
+            return self.get(job_id)  # type: ignore[return-value]
 
     def _milvus(self) -> MilvusChunkStore:
         collection = self.store.get_setting("active_collection_name", self.settings.milvus_collection)
@@ -162,6 +218,10 @@ class DocumentImportManager:
         return path, [item for item in chunks if item.get("knowledge_base_id") == knowledge_base_id and item.get("document_id") == document_id]
 
     def delete_document(self, knowledge_base_id: str, document_id: str) -> bool:
+        with self._lock:
+            return self._delete_document_locked(knowledge_base_id, document_id)
+
+    def _delete_document_locked(self, knowledge_base_id: str, document_id: str) -> bool:
         if self.document(knowledge_base_id, document_id, include_content=False) is None:
             return False
         digest_jobs = self._jobs_for_document(knowledge_base_id, document_id)
@@ -184,6 +244,10 @@ class DocumentImportManager:
             return [to_job(record) for record in records if stable_id("document", record.file_hash) == document_id]
 
     def reindex_document(self, knowledge_base_id: str, document_id: str) -> ImportJob:
+        with self._lock:
+            return self._reindex_document_locked(knowledge_base_id, document_id)
+
+    def _reindex_document_locked(self, knowledge_base_id: str, document_id: str) -> ImportJob:
         document = self.document(knowledge_base_id, document_id, include_content=False)
         if document is None:
             raise KeyError("文档不存在")
@@ -225,13 +289,17 @@ class DocumentImportManager:
             milvus = self._milvus()
             self.update(job_id, status="embedding")
             batch_size = max(1, int(profile.options.get("batch_size", 8)))
+            embedded = []
             for offset in range(0, len(chunks), batch_size):
                 if self.store.get_setting("active_collection_name", self.settings.milvus_collection) != collection:
                     raise RuntimeError("Embedding 索引已切换，请重新尝试")
                 batch = chunks[offset:offset + batch_size]
                 vectors = embedder.embed([str(item["content"]) for item in batch])
-                milvus.upsert([Chunk(**{**item, "block_types": tuple(item.get("block_types") or ()), "vector": None}).with_vector(vector) for item, vector in zip(batch, vectors, strict=True)])
-                self.update(job_id, completed_chunks=offset + len(batch))
+                embedded.extend(Chunk(**{**item, "block_types": tuple(item.get("block_types") or ()), "vector": None}).with_vector(vector) for item, vector in zip(batch, vectors, strict=True))
+                self.update(job_id, completed_chunks=len(embedded))
+            if self.store.get_setting("active_collection_name", self.settings.milvus_collection) != collection:
+                raise RuntimeError("Embedding 索引已切换，请重新尝试")
+            milvus.upsert(embedded)
             self.update(job_id, status="completed")
         except Exception as exc:
             self.update(job_id, status="failed", error=str(exc)[:1000])
@@ -240,6 +308,10 @@ class DocumentImportManager:
         job = self.get(job_id)
         if job is None:
             return
+        milvus = None
+        prepared = None
+        write_started = False
+        already_indexed = True
         try:
             profile = self.store.get_profile(self.store.get_setting("active_embedding_profile_id"))
             if profile is None or not profile.enabled:
@@ -259,20 +331,33 @@ class DocumentImportManager:
             self.update(job_id, status="embedding", total_chunks=len(prepared.chunks))
             embedder = create_embedder(profile)
             milvus = MilvusChunkStore(self.settings.milvus_uri, collection, dim)
+            already_indexed = bool(milvus.document_chunks(job.knowledge_base_id, prepared.document.document_id))
             batch_size = max(1, int(profile.options.get("batch_size", 8)))
+            embedded = []
             for offset in range(0, len(prepared.chunks), batch_size):
-                # Detect a concurrent embedding switch before writing into the wrong collection.
                 if self.store.get_setting("active_collection_name", self.settings.milvus_collection) != collection:
                     raise RuntimeError("Embedding 索引已切换，请重新导入")
                 batch = prepared.chunks[offset:offset + batch_size]
                 vectors = embedder.embed([chunk.content for chunk in batch])
-                embedded = [chunk.with_vector(vector) for chunk, vector in zip(batch, vectors, strict=True)]
-                milvus.upsert(embedded)
-                self.update(job_id, completed_chunks=offset + len(batch))
+                embedded.extend(chunk.with_vector(vector) for chunk, vector in zip(batch, vectors, strict=True))
+                self.update(job_id, completed_chunks=len(embedded))
+            if self.store.get_setting("active_collection_name", self.settings.milvus_collection) != collection:
+                raise RuntimeError("Embedding 索引已切换，请重新导入")
+            write_started = True
+            milvus.upsert(embedded)
             pipeline.save_prepared(prepared)
             self.update(job_id, status="completed")
         except Exception as exc:
-            self.update(job_id, status="failed", error=str(exc)[:1000])
+            error = str(exc)
+            if write_started and not already_indexed and milvus is not None and prepared is not None:
+                try:
+                    milvus.delete_document(job.knowledge_base_id, prepared.document.document_id)
+                except Exception as cleanup_error:
+                    logger.exception("Failed to roll back incomplete document index")
+                    error += f"；未能清理不完整索引：{cleanup_error}"
+            self.update(job_id, status="failed", error=error[:1000])
         finally:
-            path.unlink(missing_ok=True)
-            path.parent.rmdir()
+            if self.get(job_id).status == "completed":  # type: ignore[union-attr]
+                path.unlink(missing_ok=True)
+                (path.parent / "options.json").unlink(missing_ok=True)
+                path.parent.rmdir()

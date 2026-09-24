@@ -293,6 +293,7 @@ def create_app(
     app.state.fixed_rag_service = rag_service
     app.state.rag_registry = registry
     app.state.index_manager = index_manager
+    app.state.document_import_manager = import_manager
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
@@ -469,6 +470,15 @@ def create_app(
             raise HTTPException(status_code=404, detail="导入任务不存在")
         return job
 
+    @app.post("/api/v1/admin/document-imports/{job_id}/retry", response_model=ImportJob, status_code=202)
+    async def retry_document_import(job_id: str, _: User = Depends(require_admin)) -> ImportJob:
+        try:
+            return await run_in_threadpool(import_manager.retry, job_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="导入任务不存在") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.post("/api/v1/admin/document-imports", response_model=ImportJob, status_code=202)
     async def upload_document(
         file: UploadFile = File(...),
@@ -502,9 +512,15 @@ def create_app(
             if size == 0:
                 raise HTTPException(status_code=400, detail="文件不能为空")
             return await run_in_threadpool(import_manager.start, path, name, knowledge_base_id, ocr_mode, duplicate_mode)
+        except ValueError as exc:
+            path.unlink(missing_ok=True)
+            if upload_dir.exists():
+                upload_dir.rmdir()
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except Exception:
             path.unlink(missing_ok=True)
-            upload_dir.rmdir()
+            if upload_dir.exists():
+                upload_dir.rmdir()
             raise
         finally:
             await file.close()
