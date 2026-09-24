@@ -57,6 +57,28 @@ class MilvusChunkStore:
         self.client.flush(collection_name=self.collection)
         return len(rows)
 
+    def list_documents(self, knowledge_base_id: str) -> list[str]:
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", knowledge_base_id):
+            raise ValueError("Invalid knowledge_base_id")
+        if not self.client.has_collection(collection_name=self.collection):
+            return []
+        iterator = self.client.query_iterator(
+            collection_name=self.collection,
+            batch_size=1000,
+            filter=f'knowledge_base_id == "{knowledge_base_id}"',
+            output_fields=["document_id", "document_name"],
+        )
+        documents: dict[str, str] = {}
+        try:
+            while batch := iterator.next():
+                for row in batch:
+                    document_id = str(row.get("document_id") or "")
+                    if document_id:
+                        documents[document_id] = str(row.get("document_name") or "未知文档")
+        finally:
+            iterator.close()
+        return sorted(documents.values())
+
     def search(self, vector: list[float], limit: int = 10, knowledge_base_id: str | None = None) -> list[dict[str, Any]]:
         if knowledge_base_id and not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", knowledge_base_id):
             raise ValueError("Invalid knowledge_base_id")

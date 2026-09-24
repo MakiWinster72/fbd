@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from knowledge_rag.rag import RagService
+from knowledge_rag.milvus_store import MilvusChunkStore
+from knowledge_rag.rag import RagService, _asks_document_inventory
 
 
 class FakeEmbedder:
@@ -104,6 +105,63 @@ class RagServiceTests(unittest.TestCase):
         self.assertEqual([source.document_id for source in sources], ["a", "b"])
         self.assertTrue(all(source.rerank_score is None for source in sources))
         self.assertEqual(sources[0].score, 0.91)
+
+    def test_inventory_question_lists_all_indexed_documents_not_only_search_hits(self) -> None:
+        store = FakeStore([
+            {"distance": 0.9, "entity": {"document_id": "doc-1", "document_name": "甲.docx", "content": "内容"}},
+        ])
+        store.list_documents = lambda kb: ["甲.docx", "乙.pdf", "丙.docx", "丁.pdf"]  # type: ignore[attr-defined]
+        chat = FakeChat("只有一份材料【1】。")
+        service = RagService(FakeEmbedder(), store, chat)
+
+        result = service.answer("你只有两份材料吗？", "engineering-center")
+        self.assertEqual(result.answer, "当前知识库共收录 4 份文档：\n1. 《甲.docx》\n2. 《乙.pdf》\n3. 《丙.docx》\n4. 《丁.pdf》")
+        self.assertTrue(result.grounded)
+        self.assertEqual(result.sources, ())
+        self.assertEqual(chat.prompts, [])
+        self.assertIsNone(store.last_filter)
+
+    def test_document_inventory_intent_does_not_catch_content_question(self) -> None:
+        self.assertTrue(_asks_document_inventory("你的知识库里有什么？"))
+        self.assertTrue(_asks_document_inventory("有哪些文档？"))
+        self.assertFalse(_asks_document_inventory("文档中有哪些重要时间节点？"))
+
+    def test_catalog_reads_all_batches_and_deduplicates_document_ids(self) -> None:
+        class Iterator:
+            def __init__(self) -> None:
+                self.batches = iter([
+                    [{"document_id": "a", "document_name": "甲.docx"}, {"document_id": "a", "document_name": "甲.docx"}],
+                    [{"document_id": "b", "document_name": "乙.pdf"}],
+                    [],
+                ])
+                self.closed = False
+
+            def next(self):
+                return next(self.batches)
+
+            def close(self):
+                self.closed = True
+
+        class Client:
+            def __init__(self) -> None:
+                self.iterator = Iterator()
+                self.filter = ""
+
+            def has_collection(self, *, collection_name):
+                return True
+
+            def query_iterator(self, *, collection_name, batch_size, filter, output_fields):
+                self.filter = filter
+                return self.iterator
+
+        store = MilvusChunkStore.__new__(MilvusChunkStore)
+        store.collection = "chunks"
+        store.client = Client()
+        self.assertEqual(store.list_documents("engineering-center"), ["乙.pdf", "甲.docx"])
+        self.assertEqual(store.client.filter, 'knowledge_base_id == "engineering-center"')
+        self.assertTrue(store.client.iterator.closed)
+        with self.assertRaises(ValueError):
+            store.list_documents('other" or true')
 
     def test_low_score_returns_fixed_refusal_without_calling_chat(self) -> None:
         store = FakeStore([{"distance": 0.2, "entity": {"content": "不可靠内容"}}])

@@ -18,6 +18,8 @@ class SearchStore(Protocol):
         knowledge_base_id: str | None = None,
     ) -> list[dict[str, Any]]: ...
 
+    def list_documents(self, knowledge_base_id: str) -> list[str]: ...
+
 
 class ChatModel(Protocol):
     def complete(self, system_prompt: str, user_prompt: str) -> str: ...
@@ -129,6 +131,12 @@ class RagService:
             return tuple(replace(source, index=index) for index, source in enumerate(candidates[: self.top_k], 1))
 
     def answer(self, question: str, knowledge_base_id: str) -> ChatResult:
+        if _asks_document_inventory(question):
+            documents = self.store.list_documents(knowledge_base_id)
+            if not documents:
+                return ChatResult("当前知识库尚无已索引文档。", True, ())
+            listing = "\n".join(f"{index}. 《{name}》" for index, name in enumerate(documents, 1))
+            return ChatResult(f"当前知识库共收录 {len(documents)} 份文档：\n{listing}", True, ())
         sources = self.retrieve(question, knowledge_base_id)
         if not sources:
             return ChatResult(
@@ -146,6 +154,16 @@ class RagService:
         answer = self.chat_model.complete(SYSTEM_PROMPT, prompt)
         answer = _remove_invalid_citations(answer, len(sources))
         return ChatResult(answer=answer, grounded=True, sources=sources)
+
+
+def _asks_document_inventory(question: str) -> bool:
+    text = re.sub(r"\s+", "", question)
+    return bool(
+        re.search(r"(?:知识库|资料库|已入库).*(?:有什么|有哪些|有多少|几份|多少份|文件|文档|材料|目录|清单)", text)
+        or re.search(r"(?:只有|仅有|就).{0,10}(?:份|篇|个).{0,8}(?:材料|文件|文档)", text)
+        or re.search(r"(?:有哪些|有多少|列出|总共|一共).{0,12}(?:文档|文件|材料)", text)
+        or re.search(r"(?:文档|文件|材料).{0,12}(?:几份|多少份|清单|目录)", text)
+    )
 
 
 def _excerpt_from_content(content: str) -> str:
