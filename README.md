@@ -10,3 +10,14 @@ GET  /api/v1/admin/document-imports
 POST /api/v1/admin/document-imports
 POST /api/v1/admin/document-imports/{job_id}/retry
 POST /api/v1/admin/document-imports/{job_id}/discard
+
+真实服务隔离验收（须先启动 MinerU、Milvus，并配置可用的活动模型）：
+
+```bash
+uv run --extra milvus --extra test python scripts/e2e_smoke.py
+```
+
+验收使用**合成 PDF/DOCX** 和临时 SQLite、临时 `RAG_DATA_DIR`、独立 Milvus Collection，不修改已有知识库；合成文本会发送至当前配置的 Embedding/Chat 服务。涵盖上传、MinerU 解析、检索问答、失败重试及失败原件清理。完成后自动删除测试 Collection 与临时目录；若进程被强制中断，需检查并清理 `rag_e2e_*` Collection 和 `/tmp/rag-e2e-*`。
+uv run --with pytest --extra test pytest -q
+npm --prefix apps/web run check
+npm --prefix apps/web run build
