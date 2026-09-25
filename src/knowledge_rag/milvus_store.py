@@ -26,8 +26,11 @@ class MilvusChunkStore:
         self.collection = collection
         self.vector_dim = vector_dim
 
+    def has_collection(self) -> bool:
+        return self.client.has_collection(collection_name=self.collection)
+
     def ensure_collection(self) -> None:
-        if self.client.has_collection(collection_name=self.collection):
+        if self.has_collection():
             return
         self.client.create_collection(
             collection_name=self.collection,
@@ -62,7 +65,7 @@ class MilvusChunkStore:
             raise ValueError("Invalid knowledge_base_id")
         if document_id is not None and not re.fullmatch(r"[0-9a-f]{64}", document_id):
             raise ValueError("Invalid document_id")
-        if not self.client.has_collection(collection_name=self.collection):
+        if not self.has_collection():
             return []
         expression = f'knowledge_base_id == "{knowledge_base_id}"'
         if document_id is not None:

@@ -18,6 +18,7 @@ from knowledge_rag.config import Settings
 from knowledge_rag.db import DocumentImportRecord
 from knowledge_rag.document_leases import DocumentLease, recover_expired, try_acquire
 from knowledge_rag.documents import sha256_file, stable_id
+from knowledge_rag.index_commit import IndexIntent, pending_intents
 from knowledge_rag.milvus_store import MilvusChunkStore
 from knowledge_rag.pipeline import IngestionPipeline
 from knowledge_rag.providers import create_embedder
@@ -108,16 +109,79 @@ class DocumentImportManager:
         self.store = store
         self._lock = threading.RLock()
         recover_expired(store.engine)
+        self.recover_index_intents()
+
+    def _repair_intent(self, intent: IndexIntent, milvus: MilvusChunkStore | None = None) -> None:
+        job = self.get(intent.job_id)
+        if job is None:
+            raise RuntimeError("索引意图缺少关联任务，请人工核查")
+        with Session(self.store.engine) as session:
+            newer_committed = session.scalars(select(DocumentImportRecord.id).where(
+                DocumentImportRecord.knowledge_base_id == intent.knowledge_base_id,
+                DocumentImportRecord.file_hash == job.file_hash,
+                DocumentImportRecord.id != job.id,
+                DocumentImportRecord.status == "completed",
+                DocumentImportRecord.created_at >= job.created_at,
+            )).first()
+        if newer_committed:
+            intent.clear(self.settings.data_dir)
+            return  # A newer successful retry/reimport owns these vectors and cached chunks.
+        if not intent.already_indexed:
+            index = milvus or MilvusChunkStore(self.settings.milvus_uri, intent.collection, self.settings.milvus_vector_dim)
+            if index.has_collection():
+                index.delete_document(intent.knowledge_base_id, intent.document_id)
+            IngestionPipeline.remove_cached_chunks(self.settings.data_dir / "normalized" / intent.document_id, intent.knowledge_base_id, intent.document_id)
+        intent.clear(self.settings.data_dir)
+
+    def recover_index_intents(self) -> None:
+        """Reconcile crashed index writes after their document lease expires."""
+        try:
+            intents = pending_intents(self.settings.data_dir)
+        except Exception:
+            logger.exception("Cannot read index intents; manual inspection required")
+            return
+        for intent in intents:
+            lease = None
+            try:
+                lease = try_acquire(self.store.engine, DOCUMENT_LEASE_SCOPE, intent.document_id)
+                if lease is None:
+                    continue  # Another worker is still handling this document.
+                job = self.get(intent.job_id)
+                if job is None:
+                    logger.error("Index intent %s has no matching job; manual inspection required", intent.job_id)
+                    continue
+                if job.status in {"queued", "parsing", "embedding"}:
+                    self.update(job.id, status="failed", error="索引提交中断，正在清理；可稍后重试")
+                    job = self.get(job.id)
+                if job.status == "completed":
+                    intent.clear(self.settings.data_dir)
+                elif job.status in {"failed", "discarded", "deleted"}:
+                    self._repair_intent(intent)
+                    if job.status == "failed" and job.error.startswith("索引清理未完成"):
+                        self.update(job.id, error="索引清理已完成，可重试")
+            except Exception:
+                logger.exception("Failed to reconcile index intent %s", intent.job_id)
+                try:
+                    job = self.get(intent.job_id)
+                    if job is not None and job.status == "failed":
+                        self.update(job.id, error="索引清理未完成；请检查 Milvus 服务后刷新任务列表。清理完成前不能重试。")
+                except Exception:
+                    logger.exception("Failed to record index reconciliation error")
+            finally:
+                if lease is not None:
+                    lease.close()
 
     def get(self, job_id: str, recover: bool = False) -> ImportJob | None:
         if recover:
             recover_expired(self.store.engine)
+            self.recover_index_intents()
         with Session(self.store.engine) as session:
             record = session.get(DocumentImportRecord, job_id)
             return to_job(record, self.settings.data_dir) if record else None
 
     def list(self) -> list[ImportJob]:
         recover_expired(self.store.engine)
+        self.recover_index_intents()
         with Session(self.store.engine) as session:
             return [to_job(item, self.settings.data_dir) for item in session.scalars(select(DocumentImportRecord).order_by(DocumentImportRecord.created_at.desc()).limit(50))]
 
@@ -127,7 +191,11 @@ class DocumentImportManager:
 
     def start(self, path: Path, file_name: str, knowledge_base_id: str, ocr_mode: str, duplicate_mode: str) -> ImportJob:
         with self._lock:
+            self.recover_index_intents()
             digest = sha256_file(path)
+            document_id = stable_id("document", digest)
+            if any(intent.document_id == document_id for intent in pending_intents(self.settings.data_dir)):
+                raise ValueError("该文件存在未完成的索引清理，请先修复后重试")
             job_id = str(uuid4())
             lease = try_acquire(self.store.engine, DOCUMENT_LEASE_SCOPE, stable_id("document", digest), job_id)
             with Session(self.store.engine) as session:
@@ -188,6 +256,9 @@ class DocumentImportManager:
     def retry(self, job_id: str) -> ImportJob:
         with self._lock:
             recover_expired(self.store.engine)
+            self.recover_index_intents()
+            if (self.settings.data_dir / "index-intents" / f"{job_id}.json").exists():
+                raise ValueError("该任务索引清理未完成，请检查 Milvus 后重试")
             job = self.get(job_id)
             if job is None:
                 raise KeyError("导入任务不存在")
@@ -313,10 +384,7 @@ class DocumentImportManager:
         path, _ = self._cached_chunks(knowledge_base_id, document_id)
         lease.ensure_owned()
         self._milvus().delete_document(knowledge_base_id, document_id)
-        if path.is_file():
-            chunks = json.loads(path.read_text())
-            remaining = [item for item in chunks if not (item.get("document_id") == document_id and item.get("knowledge_base_id") == knowledge_base_id)]
-            path.write_text(json.dumps(remaining, ensure_ascii=False, indent=2))
+        IngestionPipeline.remove_cached_chunks(path.parent, knowledge_base_id, document_id)
         for item in digest_jobs:
             if item.status == "completed":
                 self.update(item.id, status="deleted")
@@ -424,7 +492,7 @@ class DocumentImportManager:
             return
         milvus = None
         prepared = None
-        write_started = False
+        intent = None
         already_indexed = True
         try:
             profile = self.store.get_profile(self.store.get_setting("active_embedding_profile_id"))
@@ -459,12 +527,17 @@ class DocumentImportManager:
                 raise RuntimeError("Embedding 索引已切换，请重新导入")
             if lease is not None:
                 lease.ensure_owned()
-            write_started = True
+            intent = IndexIntent(job_id, job.knowledge_base_id, prepared.document.document_id, collection, already_indexed)
+            intent.persist(self.settings.data_dir)
             milvus.upsert(embedded)
             if lease is not None:
                 lease.ensure_owned()
             pipeline.save_prepared(prepared)
             update_job(job_id, status="completed")
+            try:
+                intent.clear(self.settings.data_dir)
+            except OSError:
+                logger.exception("Committed import %s retained index intent for later cleanup", job_id)
         except Exception as exc:
             error = str(exc)
             can_clean = True
@@ -473,24 +546,30 @@ class DocumentImportManager:
                     lease.ensure_owned()
                 except RuntimeError:
                     can_clean = False
-            if write_started and not already_indexed and milvus is not None and prepared is not None and can_clean:
-                try:
-                    milvus.delete_document(job.knowledge_base_id, prepared.document.document_id)
-                except Exception as cleanup_error:
-                    logger.exception("Failed to roll back incomplete document index")
-                    error += f"；未能清理不完整索引：{cleanup_error}"
+            marked_failed = False
             try:
                 update_job(job_id, status="failed", error=error[:1000])
+                marked_failed = True
             except RuntimeError:
                 logger.warning("Skipping failure update for lost document lease: %s", job_id)
+            if intent is not None and can_clean and marked_failed:
+                try:
+                    self._repair_intent(intent, milvus)
+                except Exception as cleanup_error:
+                    logger.exception("Failed to roll back incomplete document index")
+                    try:
+                        update_job(job_id, error=f"{error}；未能清理不完整索引：{cleanup_error}"[:1000])
+                    except RuntimeError:
+                        logger.warning("Could not record index cleanup failure for %s", job_id)
         finally:
             try:
+                still_owned = True
                 if lease is not None:
                     try:
                         lease.ensure_owned()
                     except RuntimeError:
-                        return
-                if self.get(job_id).status == "completed":  # type: ignore[union-attr]
+                        still_owned = False
+                if still_owned and self.get(job_id).status == "completed":  # type: ignore[union-attr]
                     path.unlink(missing_ok=True)
                     (path.parent / "options.json").unlink(missing_ok=True)
                     path.parent.rmdir()

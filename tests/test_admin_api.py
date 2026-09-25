@@ -238,6 +238,8 @@ class AdminApiTests(unittest.TestCase):
                 self.rollbacks = 0
             def document_chunks(self, kb, doc_id):
                 return []
+            def has_collection(self):
+                return bool(self.writes)
             def upsert(self, chunks):
                 self.writes.append(chunks)
                 if self.fail_write:
@@ -273,6 +275,112 @@ class AdminApiTests(unittest.TestCase):
         self.assertEqual(len(milvus.writes[0]), 9)
         self.assertFalse(path.exists())
         self.assertFalse(path.parent.exists())
+
+    def test_interrupted_index_commit_is_repaired_after_restart(self) -> None:
+        from knowledge_rag.document_import import DocumentImportManager
+        from knowledge_rag.models import Chunk, ParsedDocument
+        from knowledge_rag.pipeline import PreparedIngestion
+        self.login("admin", "strong-password")
+        with patch("knowledge_rag.document_import.DocumentImportManager._run", side_effect=lambda job, path, mode, lease: lease.close()):
+            response = self.client.post("/api/v1/admin/document-imports", data={"knowledge_base_id": "default", "ocr_mode": "native"}, files={"file": ("crash.pdf", b"synthetic")})
+        self.assertEqual(response.status_code, 202)
+        job_id = response.json()["id"]
+        doc_id = stable_id("document", response.json()["file_hash"])
+        self.wait_for_no_lease("default", doc_id)
+        source = self.client.app.state.settings.data_dir / "uploads" / job_id / "crash.pdf"
+        chunk = Chunk("one", doc_id, "logical", "default", "crash.pdf", 1, 1, "", 0, "合成内容", "hash", ())
+        prepared = PreparedIngestion(ParsedDocument(doc_id, "logical", "crash.pdf", response.json()["file_hash"], 1, (), ()), (chunk,), self.client.app.state.settings.data_dir / "normalized" / doc_id)
+        class FakeMilvus:
+            def __init__(self):
+                self.indexed = False
+                self.cleanup_fails = True
+            def document_chunks(self, kb, document_id):
+                return []
+            def has_collection(self):
+                return self.indexed
+            def upsert(self, chunks):
+                self.indexed = True
+            def delete_document(self, kb, document_id):
+                if self.cleanup_fails:
+                    raise RuntimeError("simulated Milvus outage")
+                self.indexed = False
+        fake = FakeMilvus()
+        embedder = type("Embedder", (), {"embed": lambda self, texts: [[0.1] * 4096 for _ in texts]})()
+        with patch("knowledge_rag.document_import.IngestionPipeline.prepare", return_value=prepared), patch("knowledge_rag.document_import.create_embedder", return_value=embedder), patch("knowledge_rag.document_import.MilvusChunkStore", return_value=fake), patch("knowledge_rag.document_import.IngestionPipeline.save_prepared", side_effect=OSError("simulated disk failure")):
+            self.client.app.state.document_import_manager._run(job_id, source, "native")
+            self.assertEqual(self.client.app.state.document_import_manager.get(job_id).status, "failed")
+            intent = self.client.app.state.settings.data_dir / "index-intents" / f"{job_id}.json"
+            self.assertTrue(intent.exists())
+            self.assertTrue(fake.indexed)
+            self.assertTrue(source.exists())
+            self.assertEqual(self.client.post(f"/api/v1/admin/document-imports/{job_id}/retry").status_code, 409)
+            self.assertIn("索引清理未完成", self.client.get(f"/api/v1/admin/document-imports/{job_id}").json()["error"])
+            fake.cleanup_fails = False
+            restarted = DocumentImportManager(self.client.app.state.settings, self.store)
+            self.assertFalse(fake.indexed)
+            self.assertFalse(intent.exists())
+            self.assertEqual(restarted.get(job_id).status, "failed")
+            self.assertEqual(restarted.get(job_id).error, "索引清理已完成，可重试")
+            self.assertTrue(source.exists())
+
+    def test_stale_intent_cannot_delete_newer_completed_import(self) -> None:
+        from knowledge_rag.db import DocumentImportRecord
+        from knowledge_rag.document_import import DocumentImportManager
+        from knowledge_rag.index_commit import IndexIntent
+        from knowledge_rag.document_import import now
+        digest = hashlib.sha256(b"newer success").hexdigest()
+        old_id, new_id = "old-job", "new-job"
+        stamp = now()
+        with Session(self.store.engine) as session, session.begin():
+            session.add(DocumentImportRecord(id=old_id, file_name="a.pdf", knowledge_base_id="default", file_hash=digest,
+                                             status="failed", total_chunks=0, completed_chunks=0, error="crashed",
+                                             created_at="2020-01-01T00:00:00+00:00", updated_at=stamp))
+            session.add(DocumentImportRecord(id=new_id, file_name="a.pdf", knowledge_base_id="default", file_hash=digest,
+                                             status="completed", total_chunks=1, completed_chunks=1, error="",
+                                             created_at=stamp, updated_at=stamp))
+        intent = IndexIntent(old_id, "default", stable_id("document", digest), "test_collection", False)
+        intent.persist(self.client.app.state.settings.data_dir)
+        with patch("knowledge_rag.document_import.MilvusChunkStore", side_effect=AssertionError("不能删除后来成功的索引")):
+            DocumentImportManager(self.client.app.state.settings, self.store)
+        self.assertFalse(intent.path(self.client.app.state.settings.data_dir).exists())
+
+    def test_completed_status_failure_rolls_back_new_index_and_cache(self) -> None:
+        from knowledge_rag.models import Chunk, ParsedDocument
+        from knowledge_rag.pipeline import PreparedIngestion
+        self.login("admin", "strong-password")
+        with patch("knowledge_rag.document_import.DocumentImportManager._run", side_effect=lambda job, path, mode, lease: lease.close()):
+            response = self.client.post("/api/v1/admin/document-imports", data={"knowledge_base_id": "default", "ocr_mode": "native"}, files={"file": ("status.pdf", b"synthetic")})
+        self.assertEqual(response.status_code, 202)
+        job_id = response.json()["id"]
+        doc_id = stable_id("document", response.json()["file_hash"])
+        self.wait_for_no_lease("default", doc_id)
+        source = self.client.app.state.settings.data_dir / "uploads" / job_id / "status.pdf"
+        output = self.client.app.state.settings.data_dir / "normalized" / doc_id
+        prepared = PreparedIngestion(
+            ParsedDocument(doc_id, "logical", "status.pdf", response.json()["file_hash"], 1, (), ()),
+            (Chunk("one", doc_id, "logical", "default", "status.pdf", 1, 1, "", 0, "内容", "hash", ()),), output,
+        )
+        class FakeMilvus:
+            def __init__(self): self.indexed = False
+            def document_chunks(self, kb, document_id): return []
+            def has_collection(self): return self.indexed
+            def upsert(self, chunks): self.indexed = True
+            def delete_document(self, kb, document_id): self.indexed = False
+        fake = FakeMilvus()
+        embedder = type("Embedder", (), {"embed": lambda self, texts: [[0.1] * 4096 for _ in texts]})()
+        manager = self.client.app.state.document_import_manager
+        normal_update = manager.update
+        def fail_completed(id, **values):
+            if values.get("status") == "completed":
+                raise RuntimeError("simulated DB outage at commit")
+            return normal_update(id, **values)
+        with patch("knowledge_rag.document_import.IngestionPipeline.prepare", return_value=prepared), patch("knowledge_rag.document_import.create_embedder", return_value=embedder), patch("knowledge_rag.document_import.MilvusChunkStore", return_value=fake), patch.object(manager, "update", side_effect=fail_completed):
+            manager._run(job_id, source, "native")
+        self.assertEqual(manager.get(job_id).status, "failed")
+        self.assertFalse(fake.indexed)
+        self.assertEqual(json.loads((output / "chunks.json").read_text()), [])
+        self.assertTrue(source.exists())
+        self.assertFalse((self.client.app.state.settings.data_dir / "index-intents" / f"{job_id}.json").exists())
 
     def test_document_management_is_admin_only_scoped_and_removes_cached_chunks(self) -> None:
         digest = hashlib.sha256(b"fixture").hexdigest()
@@ -313,6 +421,28 @@ class AdminApiTests(unittest.TestCase):
             self.assertEqual(milvus.deleted, ("default", doc_id))
             self.assertEqual(json.loads((cache / "chunks.json").read_text()), [])
             self.assertEqual(self.client.get(url, params={"knowledge_base_id": "default"}).json(), [])
+
+    def test_cached_chunks_survive_interrupted_atomic_replacement(self) -> None:
+        from knowledge_rag.models import Chunk, ParsedDocument
+        from knowledge_rag.pipeline import IngestionPipeline, PreparedIngestion
+        output = self.client.app.state.settings.data_dir / "normalized" / "stable"
+        document = ParsedDocument("stable", "logical", "stable.pdf", "hash", 1, (), ())
+        def prepared(text: str) -> PreparedIngestion:
+            chunk = Chunk("chunk", "stable", "logical", "default", "stable.pdf", 1, 1, "", 0, text, "hash", ())
+            return PreparedIngestion(document, (chunk,), output)
+        IngestionPipeline.save_prepared(prepared("旧内容"))
+        old = (output / "chunks.json").read_bytes()
+        from knowledge_rag.index_commit import os as commit_os
+        replace = commit_os.replace
+        def fail_chunk_replace(source, target):
+            if str(target).endswith("chunks.json"):
+                raise OSError("simulated power loss during cache promotion")
+            return replace(source, target)
+        with patch("knowledge_rag.index_commit.os.replace", side_effect=fail_chunk_replace):
+            with self.assertRaises(OSError):
+                IngestionPipeline.save_prepared(prepared("新内容"))
+        self.assertEqual((output / "chunks.json").read_bytes(), old)
+        self.assertEqual(list(output.glob(".chunks.json.*")), [])
 
     def test_cached_chunks_preserve_other_knowledge_bases(self) -> None:
         from knowledge_rag.models import Chunk, ParsedDocument

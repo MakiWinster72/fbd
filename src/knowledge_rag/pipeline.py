@@ -6,6 +6,7 @@ from pathlib import Path
 
 from knowledge_rag.chunking import chunk_document
 from knowledge_rag.config import Settings
+from knowledge_rag.index_commit import atomic_json
 from knowledge_rag.milvus_store import MilvusChunkStore
 from knowledge_rag.models import Chunk, ParsedDocument
 from knowledge_rag.normalize import normalize_document
@@ -49,19 +50,24 @@ class IngestionPipeline:
     @staticmethod
     def save_prepared(prepared: PreparedIngestion) -> None:
         prepared.output_dir.mkdir(parents=True, exist_ok=True)
-        (prepared.output_dir / "document.json").write_text(
-            json.dumps(asdict(prepared.document), ensure_ascii=False, indent=2),
-        )
         chunks_path = prepared.output_dir / "chunks.json"
         incoming = [asdict(chunk) for chunk in prepared.chunks]
         # The same file hash can be indexed in several knowledge bases; do not
         # overwrite another base's cached chunks when importing it again.
         existing = json.loads(chunks_path.read_text()) if chunks_path.exists() else []
         targets = {item["knowledge_base_id"] for item in incoming}
-        chunks_path.write_text(json.dumps(
-            [item for item in existing if item.get("knowledge_base_id") not in targets] + incoming,
-            ensure_ascii=False, indent=2,
-        ))
+        atomic_json(chunks_path, [item for item in existing if item.get("knowledge_base_id") not in targets] + incoming)
+        atomic_json(prepared.output_dir / "document.json", asdict(prepared.document))
+
+    @staticmethod
+    def remove_cached_chunks(output_dir: Path, knowledge_base_id: str, document_id: str) -> None:
+        path = output_dir / "chunks.json"
+        if not path.is_file():
+            return
+        existing = json.loads(path.read_text())
+        remaining = [item for item in existing if not (item.get("knowledge_base_id") == knowledge_base_id and item.get("document_id") == document_id)]
+        if len(remaining) != len(existing):
+            atomic_json(path, remaining)
 
     def embed(self, prepared: PreparedIngestion) -> PreparedIngestion:
         embedder = OllamaEmbedder(
