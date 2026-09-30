@@ -25,8 +25,9 @@ class FakeRagService:
     def retrieve(self, question: str, knowledge_base_id: str):
         return (SOURCE,)
 
-    def answer(self, question: str, knowledge_base_id: str):
-        return ChatResult("项目预算为 120 万元【1】。", True, (SOURCE,))
+    def answer(self, question: str, knowledge_base_id: str, locale: str = "zh-CN"):
+        answer = "Budget is 1.2 million yuan【1】." if locale == "en" else "项目预算为 120 万元【1】。"
+        return ChatResult(answer, True, (SOURCE,))
 
 
 class ApiTests(unittest.TestCase):
@@ -53,6 +54,13 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(payload["grounded"])
         self.assertIn("【1】", payload["answer"])
         self.assertEqual(payload["sources"][0]["page_start"], 1)
+
+    def test_chat_accepts_english_and_rejects_unknown_locale(self) -> None:
+        response = self.client.post("/api/v1/chat", json={"question": "Budget?", "locale": "en"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Budget", response.json()["answer"])
+        invalid = self.client.post("/api/v1/chat", json={"question": "Budget?", "locale": "fr"})
+        self.assertEqual(invalid.status_code, 422)
 
     def test_invalid_knowledge_base_id_is_rejected(self) -> None:
         response = self.client.post(

@@ -26,7 +26,7 @@ class FakeRagService:
     def retrieve(self, question: str, knowledge_base_id: str):
         return ()
 
-    def answer(self, question: str, knowledge_base_id: str):
+    def answer(self, question: str, knowledge_base_id: str, locale: str = "zh-CN"):
         return ChatResult("当前知识库中没有足够依据回答该问题。", False, ())
 
 

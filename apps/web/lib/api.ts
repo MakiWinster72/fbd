@@ -105,10 +105,10 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json();
 }
 
-export function askKnowledgeBase(question: string, knowledgeBaseId: string): Promise<ChatResponse> {
+export function askKnowledgeBase(question: string, knowledgeBaseId: string, locale: "zh-CN" | "en" = "zh-CN"): Promise<ChatResponse> {
   return apiRequest("/api/v1/chat", {
     method: "POST",
-    body: JSON.stringify({ question, knowledge_base_id: knowledgeBaseId }),
+    body: JSON.stringify({ question, knowledge_base_id: knowledgeBaseId, locale }),
   });
 }
 

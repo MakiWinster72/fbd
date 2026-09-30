@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useLanguage } from "@/components/language-provider";
 import {
   createAdminUser,
   getCurrentUser,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/api";
 
 function UserCard({ user, currentUser, knowledgeBases, onChanged }: { user: AdminUser; currentUser: CurrentUser; knowledgeBases: KnowledgeBase[]; onChanged: () => Promise<void> }) {
+  const { t } = useLanguage();
   const [access, setAccess] = useState(user.knowledge_base_ids);
   const [newPassword, setNewPassword] = useState("");
   const [busy, setBusy] = useState("");
@@ -42,11 +44,11 @@ function UserCard({ user, currentUser, knowledgeBases, onChanged }: { user: Admi
           <h3>{user.display_name}</h3>
           <p>@{user.username}</p>
         </div>
-        <span className={`user-status ${user.active ? "active" : "inactive"}`}>{user.active ? "正常" : "已禁用"}</span>
+        <span className={`user-status ${user.active ? "active" : "inactive"}`}>{t(user.active ? "正常" : "已禁用")}</span>
       </header>
 
       <fieldset className="permission-fieldset" disabled={Boolean(busy) || user.role === "admin"}>
-        <legend>知识库权限{user.role === "admin" ? "（管理员默认拥有全部权限）" : ""}</legend>
+        <legend>{t("知识库权限")}{user.role === "admin" ? t("（管理员默认拥有全部权限）") : ""}</legend>
         {knowledgeBases.map((item) => (
           <label key={item.id}>
             <input
@@ -60,7 +62,7 @@ function UserCard({ user, currentUser, knowledgeBases, onChanged }: { user: Admi
       </fieldset>
 
       <div className="password-reset-row">
-        <label><span>重置密码</span><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="至少 10 个字符" autoComplete="new-password" /></label>
+        <label><span>{t("重置密码")}</span><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder={t("至少 10 个字符")} autoComplete="new-password" /></label>
         <button
           type="button"
           disabled={Boolean(busy) || newPassword.length < 10}
@@ -69,11 +71,11 @@ function UserCard({ user, currentUser, knowledgeBases, onChanged }: { user: Admi
             setNewPassword("");
             setNotice("密码已重置，原有会话已失效");
           })}
-        >{busy === "password" ? "重置中…" : "重置密码"}</button>
+        >{t(busy === "password" ? "重置中…" : "重置密码")}</button>
       </div>
 
-      {notice ? <p className="form-notice">{notice}</p> : null}
-      {error ? <p className="form-error" role="alert">{error}</p> : null}
+      {notice ? <p className="form-notice">{t(notice)}</p> : null}
+      {error ? <p className="form-error" role="alert">{t(error)}</p> : null}
 
       <footer className="profile-actions">
         {user.role !== "admin" ? (
@@ -85,24 +87,25 @@ function UserCard({ user, currentUser, knowledgeBases, onChanged }: { user: Admi
               setNotice("知识库权限已更新");
               await onChanged();
             })}
-          >{busy === "access" ? "保存中…" : "保存知识库权限"}</button>
+          >{t(busy === "access" ? "保存中…" : "保存知识库权限")}</button>
         ) : null}
         <button
           className={user.active ? "danger" : "primary"}
           type="button"
           disabled={Boolean(busy) || user.id === currentUser.id}
-          title={user.id === currentUser.id ? "不能禁用当前登录账户" : undefined}
+          title={user.id === currentUser.id ? t("不能禁用当前登录账户") : undefined}
           onClick={() => run("status", async () => {
             await setAdminUserStatus(user.id, !user.active);
             await onChanged();
           })}
-        >{busy === "status" ? "处理中…" : user.active ? "禁用用户" : "启用用户"}</button>
+        >{t(busy === "status" ? "处理中…" : user.active ? "禁用用户" : "启用用户")}</button>
       </footer>
     </article>
   );
 }
 
 export default function AdminUsersPage() {
+  const { t } = useLanguage();
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
@@ -138,36 +141,36 @@ export default function AdminUsersPage() {
     }
   }
 
-  if (!currentUser) return <main className="auth-status"><span className="auth-spinner" /><p>{error || "正在验证管理员权限…"}</p></main>;
+  if (!currentUser) return <main className="auth-status"><span className="auth-spinner" /><p>{t(error || "正在验证管理员权限…")}</p></main>;
 
   return (
     <main className="admin-shell">
       <header className="admin-header">
-        <div><p className="section-kicker">IDENTITY & ACCESS</p><h1>用户与知识库权限</h1><p>普通用户只能访问管理员明确授权的知识库。</p></div>
-        <nav><a href="/">返回知识库</a><a href="/admin/documents">文件导入</a><a href="/admin/models">模型配置</a><button type="button" onClick={() => setShowCreate((value) => !value)}>{showCreate ? "取消新增" : "新增用户"}</button></nav>
+        <div><p className="section-kicker">IDENTITY & ACCESS</p><h1>{t("用户与知识库权限")}</h1><p>{t("普通用户只能访问管理员明确授权的知识库。")}</p></div>
+        <nav><a href="/">{t("返回知识库")}</a><a href="/admin/documents">{t("文件导入")}</a><a href="/admin/models">{t("模型配置")}</a><button type="button" onClick={() => setShowCreate((value) => !value)}>{t(showCreate ? "取消新增" : "新增用户")}</button></nav>
       </header>
 
-      {error ? <p className="admin-error" role="alert">{error}</p> : null}
+      {error ? <p className="admin-error" role="alert">{t(error)}</p> : null}
 
       {showCreate ? (
         <form className="create-profile-form create-user-form" onSubmit={createUser}>
-          <div><p className="section-kicker">NEW ACCOUNT</p><h2>创建用户</h2></div>
-          <label><span>用户名</span><input required pattern="[A-Za-z0-9._-]{2,80}" value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} /></label>
-          <label><span>显示名称</span><input required value={form.display_name} onChange={(event) => setForm({ ...form, display_name: event.target.value })} /></label>
-          <label><span>初始密码</span><input required minLength={10} type="password" autoComplete="new-password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label>
-          <label><span>角色</span><select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as "admin" | "user" })}><option value="user">普通用户</option><option value="admin">管理员</option></select></label>
+          <div><p className="section-kicker">NEW ACCOUNT</p><h2>{t("创建用户")}</h2></div>
+          <label><span>{t("用户名")}</span><input required pattern="[A-Za-z0-9._-]{2,80}" value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} /></label>
+          <label><span>{t("显示名称")}</span><input required value={form.display_name} onChange={(event) => setForm({ ...form, display_name: event.target.value })} /></label>
+          <label><span>{t("初始密码")}</span><input required minLength={10} type="password" autoComplete="new-password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label>
+          <label><span>{t("角色")}</span><select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as "admin" | "user" })}><option value="user">{t("普通用户")}</option><option value="admin">{t("管理员")}</option></select></label>
           {form.role === "user" ? (
             <fieldset className="create-access-fieldset">
-              <legend>初始知识库权限</legend>
+              <legend>{t("初始知识库权限")}</legend>
               {knowledgeBases.map((item) => <label key={item.id}><input type="checkbox" checked={form.knowledge_base_ids.includes(item.id)} onChange={(event) => setForm({ ...form, knowledge_base_ids: event.target.checked ? [...form.knowledge_base_ids, item.id] : form.knowledge_base_ids.filter((id) => id !== item.id) })} />{item.name}</label>)}
             </fieldset>
           ) : null}
-          <button className="primary" type="submit">创建用户</button>
+          <button className="primary" type="submit">{t("创建用户")}</button>
         </form>
       ) : null}
 
       <section className="profile-section">
-        <div className="admin-section-heading"><p className="section-kicker">ACCOUNTS</p><h2>全部用户 · {String(users.length).padStart(2, "0")}</h2></div>
+        <div className="admin-section-heading"><p className="section-kicker">ACCOUNTS</p><h2>{t("全部用户")} · {String(users.length).padStart(2, "0")}</h2></div>
         <div className="admin-user-list">
           {users.map((user) => <UserCard key={user.id} user={user} currentUser={currentUser} knowledgeBases={knowledgeBases} onChanged={load} />)}
         </div>

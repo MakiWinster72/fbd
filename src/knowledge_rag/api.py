@@ -37,7 +37,7 @@ class SearchRequest(BaseModel):
 
 
 class ChatRequest(SearchRequest):
-    pass
+    locale: Literal["zh-CN", "en"] = "zh-CN"
 
 
 class SourceResponse(BaseModel):
@@ -362,7 +362,7 @@ def create_app(
             raise HTTPException(status_code=403, detail="没有访问该知识库的权限")
         service = get_rag_service(request)
         try:
-            result = await run_in_threadpool(service.answer, payload.question, payload.knowledge_base_id)
+            result = await run_in_threadpool(service.answer, payload.question, payload.knowledge_base_id, payload.locale)
         except Exception as exc:
             raise HTTPException(status_code=503, detail=f"Chat failed: {exc}") from exc
         return ChatResponse(

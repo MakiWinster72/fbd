@@ -64,6 +64,16 @@ SYSTEM_PROMPT = """你是私有文档知识库助手。
 6. 回答使用简体中文，先给结论，再给必要说明。
 """
 
+SYSTEM_PROMPT_EN = """You are an assistant for a private document knowledge base.
+Follow these rules strictly:
+1. Answer only from the retrieved evidence in the user message; do not add external facts.
+2. Cite every factual claim using the corresponding 【1】, 【2】 evidence markers.
+3. Do not invent file names, page numbers, figures, names, projects, or citations.
+4. If sources conflict, explain the conflict and cite each source.
+5. If evidence is insufficient, reply: "There is not enough evidence in the current knowledge base to answer this question."
+6. Answer in English. Give the conclusion first, followed by necessary details.
+"""
+
 
 class RagService:
     """Retrieve evidence, enforce score thresholds, and produce cited answers."""
@@ -130,17 +140,19 @@ class RagService:
             logger.warning("Reranker failed; falling back to vector order: %s", exc)
             return tuple(replace(source, index=index) for index, source in enumerate(candidates[: self.top_k], 1))
 
-    def answer(self, question: str, knowledge_base_id: str) -> ChatResult:
+    def answer(self, question: str, knowledge_base_id: str, locale: str = "zh-CN") -> ChatResult:
+        english = locale == "en"
         if _asks_document_inventory(question):
             documents = self.store.list_documents(knowledge_base_id)
             if not documents:
-                return ChatResult("当前知识库尚无已索引文档。", True, ())
+                return ChatResult("No documents are indexed in this knowledge base." if english else "当前知识库尚无已索引文档。", True, ())
             listing = "\n".join(f"{index}. 《{name}》" for index, name in enumerate(documents, 1))
-            return ChatResult(f"当前知识库共收录 {len(documents)} 份文档：\n{listing}", True, ())
+            heading = f"This knowledge base contains {len(documents)} documents:" if english else f"当前知识库共收录 {len(documents)} 份文档："
+            return ChatResult(f"{heading}\n{listing}", True, ())
         sources = self.retrieve(question, knowledge_base_id)
         if not sources:
             return ChatResult(
-                answer="当前知识库中没有足够依据回答该问题。",
+                answer="There is not enough evidence in the current knowledge base to answer this question." if english else "当前知识库中没有足够依据回答该问题。",
                 grounded=False,
                 sources=(),
             )
@@ -151,7 +163,8 @@ class RagService:
             for source in sources
         )
         prompt = f"问题：{question}\n\n检索证据：\n{evidence}"
-        answer = self.chat_model.complete(SYSTEM_PROMPT, prompt)
+        system_prompt = SYSTEM_PROMPT_EN if english else SYSTEM_PROMPT
+        answer = self.chat_model.complete(system_prompt, prompt)
         answer = _remove_invalid_citations(answer, len(sources))
         return ChatResult(answer=answer, grounded=True, sources=sources)
 
@@ -159,7 +172,9 @@ class RagService:
 def _asks_document_inventory(question: str) -> bool:
     text = re.sub(r"\s+", "", question)
     return bool(
-        re.search(r"(?:知识库|资料库|已入库).*(?:有什么|有哪些|有多少|几份|多少份|文件|文档|材料|目录|清单)", text)
+        re.search(r"(?:what|which|list|how many).{0,40}(?:documents?|files?)", question, re.I)
+        or re.search(r"(?:documents?|files?).{0,40}(?:in (?:this|the) (?:knowledge base|archive)|are (?:there|indexed))", question, re.I)
+        or re.search(r"(?:知识库|资料库|已入库).*(?:有什么|有哪些|有多少|几份|多少份|文件|文档|材料|目录|清单)", text)
         or re.search(r"(?:只有|仅有|就).{0,10}(?:份|篇|个).{0,8}(?:材料|文件|文档)", text)
         or re.search(r"(?:有哪些|有多少|列出|总共|一共).{0,12}(?:文档|文件|材料)", text)
         or re.search(r"(?:文档|文件|材料).{0,12}(?:几份|多少份|清单|目录)", text)

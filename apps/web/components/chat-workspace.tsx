@@ -2,6 +2,7 @@
 
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { askKnowledgeBase, fetchHealth, logout, type CurrentUser, type KnowledgeBase, type Source } from "@/lib/api";
+import { useLanguage } from "@/components/language-provider";
 
 type Message = {
   id: string;
@@ -41,6 +42,7 @@ function InlineText({
   sources: Source[];
   onCitation: (index: number) => void;
 }) {
+  const { t } = useLanguage();
   const sourceIndexes = new Set(sources.map((source) => source.index));
   return text.split(/(【\d+】|\*\*[^*]+\*\*)/g).map((part, index) => {
     const citationMatch = part.match(/^【(\d+)】$/);
@@ -52,7 +54,7 @@ function InlineText({
           className="inline-citation"
           key={`${part}-${index}`}
           type="button"
-          aria-label={`查看来源 ${citation}`}
+          aria-label={`${t("查看来源")} ${citation}`}
           onClick={() => onCitation(citation)}
         >
           {String(citation).padStart(2, "0")}
@@ -97,6 +99,7 @@ function SourceCards({
   idPrefix: string;
   activeCitation?: number | null;
 }) {
+  const { t } = useLanguage();
   return sources.map((source) => (
     <article
       className={`source-card${activeCitation === source.index ? " active" : ""}`}
@@ -112,7 +115,7 @@ function SourceCards({
         <h3>{source.document_name}</h3>
         {source.section_title ? <p className="source-section">{source.section_title}</p> : null}
         <p className="source-excerpt">{source.excerpt}</p>
-        <div className="confidence-track" aria-label={`相似度 ${Math.round(source.score * 100)}%`}>
+        <div className="confidence-track" aria-label={`${t("相似度")} ${Math.round(source.score * 100)}%`}>
           <span style={{ width: `${Math.max(0, Math.min(100, source.score * 100))}%` }} />
         </div>
       </div>
@@ -121,6 +124,7 @@ function SourceCards({
 }
 
 export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: CurrentUser; knowledgeBases: KnowledgeBase[] }) {
+  const { t, locale } = useLanguage();
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState(knowledgeBases[0].id);
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [question, setQuestion] = useState("");
@@ -190,7 +194,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
     setLoading(true);
 
     try {
-      const response = await askKnowledgeBase(value, selectedKnowledgeBaseId);
+      const response = await askKnowledgeBase(value, selectedKnowledgeBaseId, locale);
       const assistantMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
@@ -201,7 +205,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
       setMessages((current) => [...current, assistantMessage]);
       setLatestSources(response.sources);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "问答服务暂时不可用");
+      setError(t(caught instanceof Error ? caught.message : "问答服务暂时不可用"));
     } finally {
       setLoading(false);
     }
@@ -219,12 +223,12 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
     }
   }
 
-  const statusLabel = {
+  const statusLabel = t({
     checking: "检查服务",
     online: "检索服务在线",
     degraded: "部分服务异常",
     offline: "服务未连接",
-  }[serviceState];
+  }[serviceState]);
 
   return (
     <main className="workspace-shell">
@@ -242,10 +246,10 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
             {statusLabel}
           </div>
           <div className="collection-label">
-            <span>当前资料库</span>
+            <span>{t("当前资料库")}</span>
             {knowledgeBases.length > 1 ? (
               <select
-                aria-label="选择知识库"
+                aria-label={t("选择知识库")}
                 value={selectedKnowledgeBaseId}
                 onChange={(event) => changeKnowledgeBase(event.target.value)}
               >
@@ -255,7 +259,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
           </div>
           <div className="user-menu">
             <span>{currentUser.display_name}</span>
-            {currentUser.role === "admin" ? <><a href="/admin/documents">文件导入</a><a href="/admin/models">管理后台</a></> : null}
+            {currentUser.role === "admin" ? <><a href="/admin/documents">{t("文件导入")}</a><a href="/admin/models">{t("管理后台")}</a></> : null}
             <button
               type="button"
               onClick={async () => {
@@ -263,23 +267,23 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
                 window.location.assign("/login");
               }}
             >
-              退出
+              {t("退出")}
             </button>
           </div>
         </div>
       </header>
 
       <section className="workspace-grid">
-        <section className="conversation-panel" aria-label="知识库对话">
+        <section className="conversation-panel" aria-label={t("知识库对话")}>
           <div className="conversation-heading">
             <div>
               <p className="section-kicker">ASK THE ARCHIVE</p>
-              <h2>从材料中寻找答案</h2>
+              <h2>{t("从材料中寻找答案")}</h2>
             </div>
-            <p className="conversation-note">回答仅来自已入库文档，引用编号可定位到右侧证据。</p>
+            <p className="conversation-note">{t("回答仅来自已入库文档，引用编号可定位到右侧证据。")}</p>
             {knowledgeBases.length > 1 ? (
               <label className="mobile-kb-selector">
-                <span>当前知识库</span>
+                <span>{t("当前知识库")}</span>
                 <select value={selectedKnowledgeBaseId} onChange={(event) => changeKnowledgeBase(event.target.value)}>
                   {knowledgeBases.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
@@ -291,18 +295,18 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
             {messages.map((message) => (
               <article className={`message ${message.role}`} key={message.id}>
                 <div className="message-label">
-                  {message.role === "assistant" ? "资料助手" : "你的问题"}
+                  {t(message.role === "assistant" ? "资料助手" : "你的问题")}
                 </div>
                 <div className="message-body">
                   {message.role === "assistant" ? (
-                    <AnswerContent message={message} onCitation={openCitation} />
+                    <AnswerContent message={message.id === "welcome" ? { ...message, content: t(message.content) } : message} onCitation={openCitation} />
                   ) : (
                     <p>{message.content}</p>
                   )}
                   {message.role === "assistant" && message.sources?.length ? (
                     <div className="message-evidence-line">
-                      <span>{message.sources.length} 条证据</span>
-                      <span>已核对文件与页码</span>
+                      <span>{message.sources.length} {t("条证据")}</span>
+                      <span>{t("已核对文件与页码")}</span>
                     </div>
                   ) : null}
                 </div>
@@ -311,11 +315,11 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
 
             {loading ? (
               <article className="message assistant loading-message">
-                <div className="message-label">资料助手</div>
+                <div className="message-label">{t("资料助手")}</div>
                 <div className="message-body">
                   <div className="search-progress">
                     <span /><span /><span />
-                    <p>正在检索材料并核对引用…</p>
+                    <p>{t("正在检索材料并核对引用…")}</p>
                   </div>
                 </div>
               </article>
@@ -332,51 +336,51 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
                   setMobileEvidenceOpen(true);
                 }}
               >
-                <span>引用来源 · {String(latestSources.length).padStart(2, "0")}</span>
-                <strong>查看页码与原文</strong>
+                <span>{t("引用来源")} · {String(latestSources.length).padStart(2, "0")}</span>
+                <strong>{t("查看页码与原文")}</strong>
               </button>
             ) : null}
             {messages.length === 1 ? (
-              <div className="quick-questions" aria-label="示例问题">
+              <div className="quick-questions" aria-label={t("示例问题")}>
                 {QUICK_QUESTIONS.map((item) => (
-                  <button type="button" key={item} onClick={() => void submitQuestion(item)}>{item}</button>
+                  <button type="button" key={item} onClick={() => void submitQuestion(t(item))}>{t(item)}</button>
                 ))}
               </div>
             ) : null}
             {error ? (
               <div className="error-banner" role="alert">
-                <strong>本次请求未完成</strong>
-                <span>{error}。请检查管理后台当前启用的对话模型协议、接口地址及连接测试结果；重排序失败会自动降级，不会阻止回答。</span>
+                <strong>{t("本次请求未完成")}</strong>
+                <span>{t(error)}。{t("请检查管理后台当前启用的对话模型协议、接口地址及连接测试结果；重排序失败会自动降级，不会阻止回答。")}</span>
               </div>
             ) : null}
             <form className="composer" onSubmit={onSubmit}>
-              <label htmlFor="question">向资料库提问</label>
+              <label htmlFor="question">{t("向资料库提问")}</label>
               <div className="composer-row">
                 <textarea
                   id="question"
                   value={question}
                   onChange={(event) => setQuestion(event.target.value)}
                   onKeyDown={onKeyDown}
-                  placeholder="例如：相关制度规定了哪些流程？"
+                  placeholder={t("例如：相关制度规定了哪些流程？")}
                   rows={2}
                   maxLength={2000}
                   disabled={loading}
                 />
                 <button className="send-button" type="submit" disabled={!question.trim() || loading}>
-                  <span>{loading ? "检索中" : "发送问题"}</span>
+                  <span>{t(loading ? "检索中" : "发送问题")}</span>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
                 </button>
               </div>
-              <p className="composer-hint">Enter 发送 · Shift + Enter 换行</p>
+              <p className="composer-hint">{t("Enter 发送 · Shift + Enter 换行")}</p>
             </form>
           </div>
         </section>
 
-        <aside className="evidence-panel" aria-label="引用来源">
+        <aside className="evidence-panel" aria-label={t("引用来源")}>
           <div className="evidence-heading">
             <div>
               <p className="section-kicker">EVIDENCE LEDGER</p>
-              <h2>引用来源</h2>
+              <h2>{t("引用来源")}</h2>
             </div>
             <span className="source-count">{String(latestSources.length).padStart(2, "0")}</span>
           </div>
@@ -387,15 +391,15 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
             ) : (
               <div className="evidence-empty">
                 <div className="empty-page" aria-hidden="true"><span>01</span></div>
-                <h3>答案的依据会显示在这里</h3>
-                <p>提问后可查看文件名、页码、相关度和命中的原文片段。</p>
+                <h3>{t("答案的依据会显示在这里")}</h3>
+                <p>{t("提问后可查看文件名、页码、相关度和命中的原文片段。")}</p>
               </div>
             )}
           </div>
 
           <div className="evidence-footnote">
             <span aria-hidden="true">※</span>
-            <p>引用内容来自自动解析结果。金额、人名和设备型号等关键信息应结合原始页面复核。</p>
+            <p>{t("引用内容来自自动解析结果。金额、人名和设备型号等关键信息应结合原始页面复核。")}</p>
           </div>
         </aside>
       </section>
@@ -406,23 +410,23 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
             className="mobile-evidence-sheet"
             role="dialog"
             aria-modal="true"
-            aria-label="引用来源"
+            aria-label={t("引用来源")}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mobile-sheet-handle" aria-hidden="true" />
             <header className="mobile-sheet-header">
               <div>
                 <p className="section-kicker">EVIDENCE LEDGER</p>
-                <h2>引用来源 · {String(latestSources.length).padStart(2, "0")}</h2>
+                <h2>{t("引用来源")} · {String(latestSources.length).padStart(2, "0")}</h2>
               </div>
-              <button type="button" onClick={() => setMobileEvidenceOpen(false)} aria-label="关闭引用来源">关闭</button>
+              <button type="button" onClick={() => setMobileEvidenceOpen(false)} aria-label={t("关闭引用来源")}>{t("关闭")}</button>
             </header>
             <div className="mobile-sheet-list">
               <SourceCards sources={latestSources} idPrefix="mobile-source" activeCitation={activeCitation} />
             </div>
             <div className="evidence-footnote mobile-sheet-footnote">
               <span aria-hidden="true">※</span>
-              <p>金额、人名和设备型号等关键信息应结合原始页面复核。</p>
+              <p>{t("金额、人名和设备型号等关键信息应结合原始页面复核。")}</p>
             </div>
           </section>
         </div>

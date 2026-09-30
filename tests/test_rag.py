@@ -163,6 +163,18 @@ class RagServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             store.list_documents('other" or true')
 
+    def test_english_response_prompt_inventory_and_refusal(self) -> None:
+        store = FakeStore([{"distance": 0.9, "entity": {"document_id": "a", "document_name": "A.pdf", "page_start": 1, "content": "预算为 120 万元"}}])
+        chat = FakeChat("The budget is 1.2 million yuan【1】.")
+        service = RagService(FakeEmbedder(), store, chat)
+        result = service.answer("What is the budget?", "default", "en")
+        self.assertIn("Answer in English", chat.prompts[0][0])
+        self.assertEqual(result.answer, "The budget is 1.2 million yuan【1】.")
+        store.list_documents = lambda kb: ["A.pdf", "B.pdf"]  # type: ignore[attr-defined]
+        self.assertIn("2 documents", service.answer("List the documents", "default", "en").answer)
+        store.hits = []
+        self.assertIn("not enough evidence", service.answer("Unknown question", "default", "en").answer)
+
     def test_low_score_returns_fixed_refusal_without_calling_chat(self) -> None:
         store = FakeStore([{"distance": 0.2, "entity": {"content": "不可靠内容"}}])
         chat = FakeChat()

@@ -782,8 +782,13 @@
   .intake-document-detail pre { max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
   .intake-review-note { padding: 10px 12px; color: #176a57; background: #eaf7f3; border: 1px solid #bfe1d6; }
 
+  .language-switch { position: fixed; top: 12px; right: 12px; z-index: 100; min-width: 48px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--paper); color: var(--archive-blue); font: inherit; font-weight: 700; cursor: pointer; box-shadow: 0 2px 10px #163a5f22; }
+  .language-switch:focus-visible { outline: 3px solid var(--blueprint); outline-offset: 2px; }
+  .topbar, .admin-header { padding-right: 76px; }
+
   @media (max-width: 760px) {
     .topbar-meta { gap: 8px; }
+    .topbar, .admin-header { padding-right: 70px; }
     .user-menu { padding-left: 8px; }
     .user-menu > span, .user-menu a { display: none; }
     .login-shell { padding: 0; place-items: stretch; }
