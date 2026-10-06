@@ -34,7 +34,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       setLocale(next);
       try { window.localStorage.setItem(STORAGE_KEY, next); } catch { /* Keep in memory. */ }
     } catch (reason) {
-      setError(locale === "en" ? "Language could not be saved. Please retry." : "语言保存失败，请重试。");
+      setError("save");
       throw reason;
     } finally { setSaving(false); }
   }
@@ -42,7 +42,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   return (
     <LanguageContext.Provider value={{ locale, changeLocale, saving, error, t: (text) => translate(locale, text) }}>
       {children}
-      {error ? <p role="alert">{error}</p> : null}
+      {error ? <p role="alert">{locale === "en" ? "Language could not be saved. Please retry." : "语言保存失败，请重试。"}</p> : null}
       <button className="language-switch" type="button" disabled={saving} onClick={() => { void changeLocale(locale === "zh-CN" ? "en" : "zh-CN").catch(() => {}); }} aria-label={locale === "zh-CN" ? "Switch to English" : "切换为中文"} title={locale === "zh-CN" ? "Switch to English" : "切换为中文"}>
         {locale === "zh-CN" ? "EN" : "中文"}
       </button>
