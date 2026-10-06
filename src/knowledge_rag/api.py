@@ -107,6 +107,15 @@ class UserResponse(BaseModel):
         return cls(**asdict(user), preferred_locale=preferred_locale)
 
 
+class AccountProfileRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=100)
+
+
+class AccountPasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class LocalePreferenceRequest(BaseModel):
     preferred_locale: Literal["zh-CN", "en"]
 
@@ -355,6 +364,24 @@ def create_app(
     async def update_own_preferences(payload: LocalePreferenceRequest, user: User = Depends(get_current_user)) -> UserResponse:
         await run_in_threadpool(store.set_user_locale, user.id, payload.preferred_locale)
         return UserResponse.from_user(user, payload.preferred_locale)
+
+    @app.patch("/api/v1/account/profile", response_model=UserResponse)
+    async def update_own_profile(payload: AccountProfileRequest, user: User = Depends(get_current_user)) -> UserResponse:
+        try:
+            updated = await run_in_threadpool(store.update_display_name, user.id, payload.display_name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return UserResponse.from_user(updated, await run_in_threadpool(store.get_user_locale, user.id))
+
+    @app.post("/api/v1/account/password", status_code=204)
+    async def change_own_password(payload: AccountPasswordRequest, response: Response, user: User = Depends(get_current_user)) -> Response:
+        try:
+            await run_in_threadpool(store.change_password, user.id, payload.current_password, payload.new_password)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        response.delete_cookie(SESSION_COOKIE, path="/")
+        response.status_code = 204
+        return response
 
     @app.post("/api/v1/auth/logout", status_code=204)
     async def logout(request: Request, response: Response, knowledge_session: str | None = Cookie(default=None)) -> Response:

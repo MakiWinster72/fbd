@@ -617,6 +617,10 @@
   .account-page dl { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr; gap: 16px; }
   .account-page dd { margin: 0; overflow-wrap: anywhere; }
   .account-page select { padding: 10px 16px; font: inherit; }
+  .account-page form { display: grid; gap: 12px; margin: 24px 0; }
+  .account-page input { width: 100%; min-width: 0; padding: 10px 12px; font: inherit; border: 1px solid var(--line); border-radius: 6px; }
+  .account-page button { justify-self: start; padding: 10px 16px; font: inherit; cursor: pointer; }
+  .account-page input:focus-visible, .account-page button:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
   .account-page a:focus-visible, .account-page select:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
   .auth-spinner { width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--blueprint); border-radius: 50%; animation: auth-spin .8s linear infinite; }
   @keyframes auth-spin { to { transform: rotate(360deg); } }

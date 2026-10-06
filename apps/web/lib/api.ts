@@ -126,6 +126,14 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   }
 }
 
+export function updateAccountProfile(display_name: string): Promise<CurrentUser> {
+  return apiRequest("/api/v1/account/profile", { method: "PATCH", body: JSON.stringify({ display_name }) });
+}
+
+export function changeAccountPassword(current_password: string, new_password: string): Promise<void> {
+  return apiRequest("/api/v1/account/password", { method: "POST", body: JSON.stringify({ current_password, new_password }) });
+}
+
 export function updateLocalePreference(preferred_locale: "zh-CN" | "en"): Promise<CurrentUser> {
   return apiRequest("/api/v1/account/preferences", { method: "PATCH", body: JSON.stringify({ preferred_locale }) });
 }

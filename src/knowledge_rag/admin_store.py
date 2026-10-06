@@ -234,6 +234,33 @@ class AdminStore:
             self._audit(session, user_id, "user.locale", "user", user_id, {"locale": locale})
         return locale
 
+    def update_display_name(self, user_id: str, display_name: str) -> User:
+        name = display_name.strip()
+        if not name or len(name) > 100:
+            raise ValueError("显示名称须为 1 到 100 个字符")
+        with Session(self.engine) as session, session.begin():
+            row = session.get(UserRecord, user_id)
+            if row is None:
+                raise KeyError(user_id)
+            row.display_name = name
+            row.updated_at = _now()
+            self._audit(session, user_id, "user.display_name", "user", user_id, {})
+            return self._user(row)
+
+    def change_password(self, user_id: str, current_password: str, new_password: str) -> None:
+        if len(new_password) < 8 or len(new_password) > 128:
+            raise ValueError("新密码须为 8 到 128 个字符")
+        with Session(self.engine) as session, session.begin():
+            row = session.get(UserRecord, user_id)
+            if row is None or not verify_password(current_password, row.password_hash):
+                raise ValueError("当前密码错误")
+            if current_password == new_password:
+                raise ValueError("新密码不能与当前密码相同")
+            row.password_hash = hash_password(new_password)
+            row.updated_at = _now()
+            session.execute(delete(SessionRecord).where(SessionRecord.user_id == user_id))
+            self._audit(session, user_id, "user.password", "user", user_id, {})
+
     def authenticate(self, username: str, password: str) -> User | None:
         with Session(self.engine) as session:
             row = session.scalar(

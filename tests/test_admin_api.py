@@ -475,6 +475,24 @@ class AdminApiTests(unittest.TestCase):
         self.login("admin", "strong-password")
         self.assertEqual(self.client.get("/api/v1/auth/me").json()["preferred_locale"], "zh-CN")
 
+    def test_account_profile_and_password_revoke_all_sessions(self) -> None:
+        self.login("reader", "reader-password")
+        token = self.store.create_session(self.user.id, 24)
+        response = self.client.patch("/api/v1/account/profile", json={"display_name": " 新名称 "})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["display_name"], "新名称")
+        self.assertEqual(self.client.patch("/api/v1/account/profile", json={"display_name": "   "}).status_code, 400)
+        endpoint = "/api/v1/account/password"
+        self.assertEqual(self.client.post(endpoint, json={"current_password": "wrong", "new_password": "new-password"}).status_code, 400)
+        self.assertIsNotNone(self.store.get_session_user(token))
+        self.assertEqual(self.client.post(endpoint, json={"current_password": "reader-password", "new_password": "reader-password"}).status_code, 400)
+        self.assertEqual(self.client.post(endpoint, json={"current_password": "reader-password", "new_password": "new-password"}).status_code, 204)
+        self.assertIsNone(self.store.get_session_user(token))
+        self.assertEqual(self.client.get("/api/v1/auth/me").status_code, 401)
+        self.assertIsNone(self.store.authenticate("reader", "reader-password"))
+        self.login("reader", "new-password")
+        self.assertEqual(self.client.get("/api/v1/auth/me").json()["display_name"], "新名称")
+
     def test_chat_requires_login(self) -> None:
         response = self.client.post("/api/v1/chat", json={"question": "测试", "knowledge_base_id": "default"})
         self.assertEqual(response.status_code, 401)
