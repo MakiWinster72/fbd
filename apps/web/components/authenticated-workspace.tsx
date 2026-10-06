@@ -6,7 +6,7 @@ import { useLanguage } from "@/components/language-provider";
 import { getCurrentUser, listKnowledgeBases, logout, type CurrentUser, type KnowledgeBase } from "@/lib/api";
 
 export function AuthenticatedWorkspace() {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [user, setUser] = useState<CurrentUser | null | undefined>(undefined);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [error, setError] = useState("");
@@ -43,6 +43,7 @@ export function AuthenticatedWorkspace() {
         <div className="login-seal" aria-hidden="true">知</div>
         <p className="section-kicker">ACCESS REQUIRED</p>
         <h1>{t("尚未分配知识库")}</h1>
+        <a href="/account">{locale === "en" ? "User center" : "用户中心"}</a>
         <p>{t("当前账号可以登录，但没有任何知识库访问权限。请联系管理员完成授权。")}</p>
         <button type="button" onClick={async () => { await logout(); window.location.assign("/login"); }}>{t("退出当前账号")}</button>
       </main>

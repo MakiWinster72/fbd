@@ -459,6 +459,22 @@ class AdminApiTests(unittest.TestCase):
         self.assertEqual({item["knowledge_base_id"] for item in chunks}, {"default", "other"})
         self.assertEqual(len(chunks), 2)
 
+    def test_account_locale_is_persisted_and_scoped_to_current_user(self) -> None:
+        endpoint = "/api/v1/account/preferences"
+        self.assertEqual(self.client.patch(endpoint, json={"preferred_locale": "en"}).status_code, 401)
+        self.login("reader", "reader-password")
+        self.assertEqual(self.client.get("/api/v1/auth/me").json()["preferred_locale"], "zh-CN")
+        response = self.client.patch(endpoint, json={"preferred_locale": "en"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["preferred_locale"], "en")
+        self.assertEqual(self.client.patch(endpoint, json={"preferred_locale": "fr"}).status_code, 422)
+        self.client.post("/api/v1/auth/logout")
+        self.login("reader", "reader-password")
+        self.assertEqual(self.client.get("/api/v1/auth/me").json()["preferred_locale"], "en")
+        self.client.post("/api/v1/auth/logout")
+        self.login("admin", "strong-password")
+        self.assertEqual(self.client.get("/api/v1/auth/me").json()["preferred_locale"], "zh-CN")
+
     def test_chat_requires_login(self) -> None:
         response = self.client.post("/api/v1/chat", json={"question": "测试", "knowledge_base_id": "default"})
         self.assertEqual(response.status_code, 401)

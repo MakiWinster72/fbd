@@ -1,6 +1,17 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine, event
+from typing import Any
+
+from sqlalchemy import (
+    Boolean,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
+    event,
+)
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -19,6 +30,14 @@ class UserRecord(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class UserPreferenceRecord(Base):
+    __tablename__ = "user_preferences"
+
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    preferred_locale: Mapped[str] = mapped_column(String(5), nullable=False, default="zh-CN")
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
@@ -139,7 +158,7 @@ def normalize_database_url(value: str) -> str:
 
 def build_engine(database_url: str) -> Engine:
     url = normalize_database_url(database_url)
-    options = {"pool_pre_ping": True}
+    options: dict[str, Any] = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
         options["connect_args"] = {"check_same_thread": False}
     engine = create_engine(url, **options)

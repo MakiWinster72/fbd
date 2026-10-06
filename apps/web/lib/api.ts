@@ -28,6 +28,7 @@ export type CurrentUser = {
   display_name: string;
   role: "admin" | "user";
   active: boolean;
+  preferred_locale: "zh-CN" | "en";
 };
 
 export type KnowledgeBase = {
@@ -123,6 +124,10 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     if (error instanceof Error && error.message === "请先登录") return null;
     throw error;
   }
+}
+
+export function updateLocalePreference(preferred_locale: "zh-CN" | "en"): Promise<CurrentUser> {
+  return apiRequest("/api/v1/account/preferences", { method: "PATCH", body: JSON.stringify({ preferred_locale }) });
 }
 
 export function login(username: string, password: string): Promise<CurrentUser> {

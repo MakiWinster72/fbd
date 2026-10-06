@@ -259,6 +259,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
           </div>
           <div className="user-menu">
             <span>{currentUser.display_name}</span>
+            <a href="/account">{locale === "en" ? "User center" : "用户中心"}</a>
             {currentUser.role === "admin" ? <><a href="/admin/documents">{t("文件导入")}</a><a href="/admin/models">{t("管理后台")}</a></> : null}
             <button
               type="button"

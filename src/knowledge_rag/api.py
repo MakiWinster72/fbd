@@ -1,13 +1,24 @@
 from __future__ import annotations
 
 import socket
-from pathlib import Path
-from uuid import uuid4
 from dataclasses import asdict
+from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
+from uuid import uuid4
 
-from fastapi import Cookie, Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile, status
+from fastapi import (
+    Cookie,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.exc import IntegrityError
@@ -15,7 +26,11 @@ from sqlalchemy.exc import IntegrityError
 from knowledge_rag.admin_store import AdminStore, IndexJob, ModelProfile, User
 from knowledge_rag.config import Settings
 from knowledge_rag.document_import import DocumentImportManager, ImportJob
-from knowledge_rag.providers import test_profile, validate_base_url, validate_profile_protocol
+from knowledge_rag.providers import (
+    test_profile,
+    validate_base_url,
+    validate_profile_protocol,
+)
 from knowledge_rag.rag import RagService, RetrievedSource
 from knowledge_rag.service_registry import EmbeddingIndexManager, RagServiceRegistry
 
@@ -53,7 +68,7 @@ class SourceResponse(BaseModel):
     rerank_score: float | None = None
 
     @classmethod
-    def from_source(cls, source: RetrievedSource) -> "SourceResponse":
+    def from_source(cls, source: RetrievedSource) -> SourceResponse:
         data = asdict(source)
         data.pop("content")
         return cls(**data)
@@ -85,17 +100,22 @@ class UserResponse(BaseModel):
     display_name: str
     role: str
     active: bool
+    preferred_locale: Literal["zh-CN", "en"] = "zh-CN"
 
     @classmethod
-    def from_user(cls, user: User) -> "UserResponse":
-        return cls(**asdict(user))
+    def from_user(cls, user: User, preferred_locale: Literal["zh-CN", "en"] = "zh-CN") -> UserResponse:
+        return cls(**asdict(user), preferred_locale=preferred_locale)
+
+
+class LocalePreferenceRequest(BaseModel):
+    preferred_locale: Literal["zh-CN", "en"]
 
 
 class AdminUserResponse(UserResponse):
     knowledge_base_ids: list[str]
 
     @classmethod
-    def from_user_with_access(cls, user: User, knowledge_base_ids: list[str]) -> "AdminUserResponse":
+    def from_user_with_access(cls, user: User, knowledge_base_ids: list[str]) -> AdminUserResponse:
         return cls(**asdict(user), knowledge_base_ids=knowledge_base_ids)
 
 
@@ -188,7 +208,7 @@ class IndexJobResponse(BaseModel):
     updated_at: str
 
     @classmethod
-    def from_job(cls, job: IndexJob) -> "IndexJobResponse":
+    def from_job(cls, job: IndexJob) -> IndexJobResponse:
         return cls(**asdict(job))
 
 
@@ -325,11 +345,16 @@ def create_app(
             samesite="lax",
             path="/",
         )
-        return UserResponse.from_user(user)
+        return UserResponse.from_user(user, await run_in_threadpool(store.get_user_locale, user.id))
 
     @app.get("/api/v1/auth/me", response_model=UserResponse)
     async def me(user: User = Depends(get_current_user)) -> UserResponse:
-        return UserResponse.from_user(user)
+        return UserResponse.from_user(user, await run_in_threadpool(store.get_user_locale, user.id))
+
+    @app.patch("/api/v1/account/preferences", response_model=UserResponse)
+    async def update_own_preferences(payload: LocalePreferenceRequest, user: User = Depends(get_current_user)) -> UserResponse:
+        await run_in_threadpool(store.set_user_locale, user.id, payload.preferred_locale)
+        return UserResponse.from_user(user, payload.preferred_locale)
 
     @app.post("/api/v1/auth/logout", status_code=204)
     async def logout(request: Request, response: Response, knowledge_session: str | None = Cookie(default=None)) -> Response:

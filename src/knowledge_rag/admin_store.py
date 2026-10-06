@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from sqlalchemy import delete, func, select, update
@@ -21,11 +21,18 @@ from knowledge_rag.db import (
     ModelProfileRecord,
     SessionRecord,
     UserKnowledgeBaseRecord,
+    UserPreferenceRecord,
     UserRecord,
     build_engine,
     migrate_legacy_sqlite_model_profiles,
 )
-from knowledge_rag.security import SecretCipher, hash_password, hash_session_token, new_session_token, verify_password
+from knowledge_rag.security import (
+    SecretCipher,
+    hash_password,
+    hash_session_token,
+    new_session_token,
+    verify_password,
+)
 
 
 def _now() -> str:
@@ -207,6 +214,26 @@ class AdminStore:
             row = session.get(UserRecord, user_id)
             return self._user(row) if row else None
 
+    def get_user_locale(self, user_id: str) -> Literal["zh-CN", "en"]:
+        with Session(self.engine) as session:
+            record = session.get(UserPreferenceRecord, user_id)
+            return "en" if record and record.preferred_locale == "en" else "zh-CN"
+
+    def set_user_locale(self, user_id: str, locale: str) -> str:
+        if locale not in {"zh-CN", "en"}:
+            raise ValueError("不支持的显示语言")
+        with Session(self.engine) as session, session.begin():
+            if session.get(UserRecord, user_id) is None:
+                raise KeyError(user_id)
+            record = session.get(UserPreferenceRecord, user_id)
+            if record is None:
+                session.add(UserPreferenceRecord(user_id=user_id, preferred_locale=locale, updated_at=_now()))
+            else:
+                record.preferred_locale = locale
+                record.updated_at = _now()
+            self._audit(session, user_id, "user.locale", "user", user_id, {"locale": locale})
+        return locale
+
     def authenticate(self, username: str, password: str) -> User | None:
         with Session(self.engine) as session:
             row = session.scalar(
@@ -333,6 +360,10 @@ class AdminStore:
             return session.get(UserKnowledgeBaseRecord, (user.id, knowledge_base_id)) is not None
 
     def _profile(self, row: ModelProfileRecord) -> ModelProfile:
+        try:
+            options = json.loads(row.options_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("模型配置选项不是有效的 JSON") from exc
         return ModelProfile(
             id=row.id,
             name=row.name,
@@ -342,7 +373,7 @@ class AdminStore:
             api_key=self.cipher.decrypt(row.api_key_ciphertext),
             model_name=row.model_name,
             vector_dim=row.vector_dim,
-            options=json.loads(row.options_json),
+            options=options,
             enabled=row.enabled,
             created_at=row.created_at,
             updated_at=row.updated_at,
