@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import threading
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from knowledge_rag.admin_store import AdminStore, ModelProfile
@@ -127,7 +126,10 @@ class EmbeddingIndexManager:
     def _load_chunks(self, knowledge_base_id: str) -> list[Chunk]:
         chunks: list[Chunk] = []
         for path in sorted((self.settings.data_dir / "normalized").glob("*/chunks.json")):
-            payload: list[dict[str, Any]] = json.loads(path.read_text())
+            try:
+                payload: list[dict[str, Any]] = json.loads(path.read_text())
+            except (OSError, ValueError) as exc:
+                raise RuntimeError(f"无法读取规范化切块 {path.parent.name}/{path.name}") from exc
             for item in payload:
                 if item.get("knowledge_base_id") != knowledge_base_id:
                     continue

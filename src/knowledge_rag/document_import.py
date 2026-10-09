@@ -4,8 +4,9 @@ import json
 import logging
 import mimetypes
 import threading
+import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -23,7 +24,6 @@ from knowledge_rag.milvus_store import MilvusChunkStore
 from knowledge_rag.pipeline import IngestionPipeline
 from knowledge_rag.providers import create_embedder
 
-
 logger = logging.getLogger(__name__)
 # Normalized chunks are shared by document hash across knowledge bases.
 DOCUMENT_LEASE_SCOPE = "__shared_document__"
@@ -31,6 +31,14 @@ DOCUMENT_LEASE_SCOPE = "__shared_document__"
 
 def now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+@dataclass
+class _DocumentSummary:
+    document_id: str
+    document_name: str
+    chunk_count: int = 0
+    page_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -62,17 +70,28 @@ def to_job(record: DocumentImportRecord, data_dir: Path) -> ImportJob:
     )
 
 
+class _NoMineruRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl) -> None:
+        return None
+
+
 def parse_mineru(path: Path, output: Path, base_url: str, force_ocr: bool) -> Path:
     """Call the project's local MinerU Gradio stream and persist its content list."""
+    parsed = urllib.parse.urlsplit(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username is not None or parsed.password is not None or parsed.query or parsed.fragment:
+        raise ValueError("MinerU 地址必须是有效的 HTTP(S) 服务地址")
     base = base_url.rstrip("/")
-    client = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    client = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoMineruRedirect())
     boundary = uuid4().hex
     mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"files\"; filename=\"document{path.suffix}\"\r\nContent-Type: {mime}\r\n\r\n".encode()
             + path.read_bytes() + f"\r\n--{boundary}--\r\n".encode())
     request = urllib.request.Request(f"{base}/gradio_api/upload", body, {"Content-Type": f"multipart/form-data; boundary={boundary}"})
     with client.open(request, timeout=120) as response:
-        uploaded = json.load(response)[0]
+        try:
+            uploaded = json.load(response)[0]
+        except (OSError, ValueError, KeyError, TypeError, IndexError) as exc:
+            raise RuntimeError("MinerU 上传返回无效结果") from exc
     payload = {"data": [
         {"path": uploaded, "orig_name": path.name, "mime_type": mime, "meta": {"_type": "gradio.FileData"}},
         1000, force_ocr, True, True, True, "medium",
@@ -80,7 +99,10 @@ def parse_mineru(path: Path, output: Path, base_url: str, force_ocr: bool) -> Pa
     ]}
     request = urllib.request.Request(f"{base}/gradio_api/call/convert_to_markdown_stream", json.dumps(payload).encode(), {"Content-Type": "application/json"})
     with client.open(request, timeout=30) as response:
-        event_id = json.load(response)["event_id"]
+        try:
+            event_id = json.load(response)["event_id"]
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise RuntimeError("MinerU 解析任务返回无效结果") from exc
     request = urllib.request.Request(f"{base}/gradio_api/call/convert_to_markdown_stream/{event_id}", headers={"Accept": "text/event-stream"})
     result = None
     event = ""
@@ -93,7 +115,10 @@ def parse_mineru(path: Path, output: Path, base_url: str, force_ocr: bool) -> Pa
                 if event == "error":
                     raise RuntimeError(f"MinerU 解析失败: {text[5:][:500]}")
                 if event == "complete":
-                    result = json.loads(text[5:].strip())
+                    try:
+                        result = json.loads(text[5:].strip())
+                    except ValueError as exc:
+                        raise RuntimeError("MinerU 解析事件返回无效结果") from exc
                     break
     if not isinstance(result, list) or len(result) < 5 or not isinstance(result[4], str):
         raise RuntimeError("MinerU 未返回 content_list.json")
@@ -153,6 +178,9 @@ class DocumentImportManager:
                 if job.status in {"queued", "parsing", "embedding"}:
                     self.update(job.id, status="failed", error="索引提交中断，正在清理；可稍后重试")
                     job = self.get(job.id)
+                    if job is None:
+                        logger.error("Index intent %s lost its job; manual inspection required", intent.job_id)
+                        continue
                 if job.status == "completed":
                     intent.clear(self.settings.data_dir)
                 elif job.status in {"failed", "discarded", "deleted"}:
@@ -268,7 +296,10 @@ class DocumentImportManager:
             if path is None or not path.is_file() or sha256_file(path) != job.file_hash:
                 raise ValueError("原文件未保留或内容已变化，请重新选择文件上传")
             options_path = path.parent / "options.json"
-            options = json.loads(options_path.read_text()) if options_path.is_file() else {}
+            try:
+                options = json.loads(options_path.read_text()) if options_path.is_file() else {}
+            except (OSError, ValueError) as exc:
+                raise ValueError("无法读取解析设置，请重新上传") from exc
             ocr_mode = options.get("ocr_mode", "auto")
             if ocr_mode not in {"auto", "force", "native"}:
                 raise ValueError("解析设置无效，请重新上传")
@@ -338,13 +369,13 @@ class DocumentImportManager:
 
     def documents(self, knowledge_base_id: str) -> list[dict[str, object]]:
         rows = self._milvus().document_chunks(knowledge_base_id)
-        documents: dict[str, dict[str, object]] = {}
+        documents: dict[str, _DocumentSummary] = {}
         for row in rows:
             doc_id = str(row["document_id"])
-            entry = documents.setdefault(doc_id, {"document_id": doc_id, "document_name": row.get("document_name") or "未知文档", "chunk_count": 0, "page_count": 0})
-            entry["chunk_count"] = int(entry["chunk_count"]) + 1
-            entry["page_count"] = max(int(entry["page_count"]), int(row.get("page_end") or 0))
-        return sorted(documents.values(), key=lambda item: str(item["document_name"]))
+            entry = documents.setdefault(doc_id, _DocumentSummary(doc_id, str(row.get("document_name") or "未知文档")))
+            entry.chunk_count += 1
+            entry.page_count = max(entry.page_count, int(row.get("page_end") or 0))
+        return [asdict(entry) for entry in sorted(documents.values(), key=lambda item: item.document_name)]
 
     def document(self, knowledge_base_id: str, document_id: str, include_content: bool = True) -> dict[str, object] | None:
         rows = self._milvus().document_chunks(knowledge_base_id, document_id, include_content=include_content)
@@ -362,7 +393,10 @@ class DocumentImportManager:
         path = self.settings.data_dir / "normalized" / document_id / "chunks.json"
         if not path.is_file():
             return path, []
-        chunks = json.loads(path.read_text())
+        try:
+            chunks = json.loads(path.read_text())
+        except (OSError, ValueError) as exc:
+            raise ValueError("无法读取文档切块，请检查缓存后重试") from exc
         return path, [item for item in chunks if item.get("knowledge_base_id") == knowledge_base_id and item.get("document_id") == document_id]
 
     def delete_document(self, knowledge_base_id: str, document_id: str) -> bool:
@@ -417,7 +451,10 @@ class DocumentImportManager:
         if any(item.status in {"queued", "parsing", "embedding"} for item in self._jobs_for_document(knowledge_base_id, document_id)):
             raise ValueError("文档已有进行中的任务")
         metadata = self.settings.data_dir / "normalized" / document_id / "document.json"
-        file_hash = json.loads(metadata.read_text()).get("file_hash", "") if metadata.is_file() else ""
+        try:
+            file_hash = json.loads(metadata.read_text()).get("file_hash", "") if metadata.is_file() else ""
+        except (OSError, ValueError) as exc:
+            raise ValueError("无法读取文档标识，请检查缓存后重试") from exc
         if not file_hash:
             file_hash = next((item.file_hash for item in self._jobs_for_document(knowledge_base_id, document_id)), "")
         if not file_hash or stable_id("document", file_hash) != document_id:

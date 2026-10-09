@@ -64,4 +64,10 @@ def pending_intents(data_dir: Path) -> list[IndexIntent]:
     directory = data_dir / "index-intents"
     if not directory.exists():
         return []
-    return [IndexIntent(**json.loads(path.read_text())) for path in sorted(directory.glob("*.json"))]
+    intents: list[IndexIntent] = []
+    for path in sorted(directory.glob("*.json")):
+        try:
+            intents.append(IndexIntent(**json.loads(path.read_text())))
+        except (OSError, ValueError, TypeError) as exc:
+            raise RuntimeError(f"Invalid index intent file {path.name}") from exc
+    return intents
