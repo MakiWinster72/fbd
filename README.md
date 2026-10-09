@@ -10,6 +10,18 @@ GET  /api/v1/admin/document-imports
 POST /api/v1/admin/document-imports
 POST /api/v1/admin/document-imports/{job_id}/retry
 POST /api/v1/admin/document-imports/{job_id}/discard
+## 回答质量评测
+
+使用独立标注题集验证 Recall@K、MRR、引用、拒答与端到端延迟；支持在线 Cookie 登录和离线响应评分。真实资料题集与报告放在忽略目录 `data/evaluation/`，报告权限为 `0600`，示例仅使用合成资料。
+
+```bash
+uv run knowledge-rag evaluate data/evaluation/questions.jsonl \
+  --base-url http://127.0.0.1:8080 --username evaluation-user \
+  --output data/evaluation/baseline.json
+```
+
+默认交互输入密码。自动化可用 `--password-env` 指定环境变量名；非本机 API 必须 HTTPS。指标定义、标注规范、离线格式、退出码与引用语义核对限制见 [评测说明](evaluation/README.md)。
+
 
 真实服务隔离验收（须先启动 MinerU、Milvus，并配置可用的活动模型）：
 

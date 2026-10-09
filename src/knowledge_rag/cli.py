@@ -39,6 +39,16 @@ def build_parser() -> argparse.ArgumentParser:
     create_admin.add_argument("username")
     create_admin.add_argument("--display-name", default="系统管理员")
     create_admin.add_argument("--password", help="omit to enter the password securely")
+    evaluate = subcommands.add_parser("evaluate", help="评测检索、引用、拒答与端到端延迟")
+    evaluate.add_argument("dataset", type=Path, help="独立 JSONL 评测集")
+    evaluate.add_argument("--base-url", default="http://127.0.0.1:8080")
+    evaluate.add_argument("--username", help="有目标知识库权限的账号")
+    evaluate.add_argument("--password-env", help="从指定环境变量读取密码，不在命令参数中传密码")
+    evaluate.add_argument("--responses", type=Path, help="离线评分用的 JSONL 响应；不调用服务或模型")
+    evaluate.add_argument("--output", type=Path, required=True, help="私有 JSON 报告路径")
+    evaluate.add_argument("--top-k", type=int, default=6)
+    evaluate.add_argument("--timeout", type=float, default=120)
+    evaluate.add_argument("--min-pass-rate", type=float, default=1.0)
     return parser
 
 
@@ -63,6 +73,10 @@ def run_health() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "evaluate":
+        from knowledge_rag.evaluation import run_command
+
+        return run_command(args)
     if args.command == "health":
         return run_health()
     if args.command == "serve":

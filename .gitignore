@@ -19,6 +19,7 @@ data/app.db*
 # Private source materials are kept outside tracked source directories
 private-documents/
 data/source/
+data/evaluation/
 *.rar
 
 # Keep the validation report, ignore generated binary/result artifacts

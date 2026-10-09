@@ -1,0 +1,4 @@
+{"id":"synthetic-person","question":"研究中心的负责人是谁？","knowledge_base_id":"evaluation","expect_grounded":true,"expected_sources":[{"document_name":"合成研究中心申报指南.pdf","page_start":1}],"answer_contains":["王明"]}
+{"id":"synthetic-code","question":"设备 ZX-204 的数量是多少？","knowledge_base_id":"evaluation","expect_grounded":true,"expected_sources":[{"document_name":"合成设备清单.pdf","page_start":2}],"answer_contains":["3"]}
+{"id":"synthetic-english","question":"Who leads the research center?","knowledge_base_id":"evaluation","locale":"en","expect_grounded":true,"expected_sources":[{"document_name":"合成研究中心申报指南.pdf","page_start":1}],"answer_contains":["Wang Ming"]}
+{"id":"synthetic-refusal","question":"明天的彩票开奖号码是多少？","knowledge_base_id":"evaluation","expect_grounded":false}
