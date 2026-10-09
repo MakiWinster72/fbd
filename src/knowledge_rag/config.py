@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,6 +32,7 @@ class Settings:
     retrieval_top_k: int = 6
     retrieval_candidate_k: int = 20
     retrieval_min_score: float = 0.35
+    retrieval_rerank_min_score: float = 0.5
     app_db_path: Path = Path("data/app.db")
     database_url: str = ""
     auth_required: bool = True
@@ -40,8 +42,12 @@ class Settings:
     bootstrap_admin_username: str = ""
     bootstrap_admin_password: str = ""
 
+    def __post_init__(self) -> None:
+        if not math.isfinite(self.retrieval_rerank_min_score) or not 0 < self.retrieval_rerank_min_score <= 1:
+            raise ValueError("retrieval_rerank_min_score must be a finite probability in (0, 1]")
+
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         # CLI and Uvicorn do not load .env automatically. Read the file from the
         # launch directory while preserving explicitly exported environment values.
         load_dotenv(Path.cwd() / ".env", override=False)
@@ -61,6 +67,7 @@ class Settings:
             retrieval_top_k=int(os.getenv("RAG_RETRIEVAL_TOP_K", str(cls.retrieval_top_k))),
             retrieval_candidate_k=int(os.getenv("RAG_RETRIEVAL_CANDIDATE_K", str(cls.retrieval_candidate_k))),
             retrieval_min_score=float(os.getenv("RAG_RETRIEVAL_MIN_SCORE", str(cls.retrieval_min_score))),
+            retrieval_rerank_min_score=float(os.getenv("RAG_RETRIEVAL_RERANK_MIN_SCORE", str(cls.retrieval_rerank_min_score))),
             app_db_path=Path(os.getenv("RAG_APP_DB_PATH", str(cls.app_db_path))),
             database_url=os.getenv("DATABASE_URL", ""),
             auth_required=_env_bool("RAG_AUTH_REQUIRED", cls.auth_required),

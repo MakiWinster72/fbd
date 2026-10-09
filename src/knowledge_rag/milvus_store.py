@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+import json
 import os
 import re
+from dataclasses import asdict
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -94,10 +95,21 @@ class MilvusChunkStore:
         self.client.delete(collection_name=self.collection, filter=f'knowledge_base_id == "{knowledge_base_id}" and document_id == "{document_id}"')
         self.client.flush(collection_name=self.collection)
 
-    def search(self, vector: list[float], limit: int = 10, knowledge_base_id: str | None = None) -> list[dict[str, Any]]:
+    def search(self, vector: list[float], limit: int = 10, knowledge_base_id: str | None = None, document_names: tuple[str, ...] | None = None, page_range: tuple[int, int] | None = None) -> list[dict[str, Any]]:
         if knowledge_base_id and not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", knowledge_base_id):
             raise ValueError("Invalid knowledge_base_id")
         expression = f'knowledge_base_id == "{knowledge_base_id}"' if knowledge_base_id else ""
+        if document_names is not None:
+            if not document_names:
+                return []
+            scope = "document_name in " + json.dumps(list(document_names), ensure_ascii=False)
+            expression = f"{expression} and {scope}" if expression else scope
+        if page_range is not None:
+            start, end = page_range
+            if type(start) is not int or type(end) is not int or not (1 <= start <= end <= 2**63 - 1):
+                raise ValueError("Invalid page_range")
+            scope = f"page_start <= {end} and page_end >= {start}"
+            expression = f"{expression} and {scope}" if expression else scope
         result = self.client.search(
             collection_name=self.collection,
             data=[vector],

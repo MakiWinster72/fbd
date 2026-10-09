@@ -10,6 +10,18 @@ from knowledge_rag.config import Settings
 
 
 class SettingsTests(unittest.TestCase):
+    def test_independent_rerank_threshold_loads_from_environment(self) -> None:
+        with patch("knowledge_rag.config.load_dotenv"), patch.dict(os.environ, {"RAG_RETRIEVAL_RERANK_MIN_SCORE": "0.8"}, clear=True):
+            settings = Settings.from_env()
+        self.assertEqual(settings.retrieval_rerank_min_score, 0.8)
+        self.assertEqual(settings.retrieval_min_score, 0.35)
+        self.assertEqual(Settings().retrieval_rerank_min_score, 0.5)
+
+    def test_independent_rerank_threshold_requires_finite_probability(self) -> None:
+        for threshold in [0.0, -0.1, 1.1, float("nan"), float("inf")]:
+            with self.subTest(threshold=threshold), self.assertRaises(ValueError):
+                Settings(retrieval_rerank_min_score=threshold)
+
     def test_from_env_loads_dotenv_from_launch_directory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, ".env").write_text("RAG_MODEL_SECRET_KEY=local-master-secret\n")

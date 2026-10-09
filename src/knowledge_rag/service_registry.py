@@ -48,6 +48,7 @@ class RagServiceRegistry:
                 min_score=self.settings.retrieval_min_score,
                 reranker=create_reranker(reranker) if reranker else None,
                 candidate_k=self.settings.retrieval_candidate_k,
+                rerank_min_score=self.settings.retrieval_rerank_min_score,
             )
             self._cache_key = key
             return self._service
