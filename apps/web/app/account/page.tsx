@@ -23,8 +23,10 @@ export default function AccountPage() {
     }).catch(() => setError("load"));
   }, []);
   return <main className="account-page">
-    <a href="/">{en ? "← Back to workspace" : "← 返回工作台"}</a>
-    <h1>{en ? "User center" : "用户中心"}</h1>
+    <header className="account-header">
+      <div><p className="section-kicker">{en ? "ACCOUNT SETTINGS" : "账号设置"}</p><h1>{en ? "User center" : "用户中心"}</h1></div>
+      <a href="/">{en ? "← Back to workspace" : "← 返回工作台"}</a>
+    </header>
     {error ? <p role="alert">{({ load: en ? "Could not load account" : "无法加载账号", name: en ? "Could not save display name" : "显示名称保存失败", mismatch: en ? "Passwords do not match" : "两次新密码不一致", password: en ? "Password change failed. Check your current password and use a different new password." : "修改失败，请检查当前密码，并使用不同的新密码。" } as Record<string, string>)[error]}</p> : null}
     {user ? <>
       <dl><dt>{en ? "Display name" : "显示名称"}</dt><dd>{user.display_name}</dd><dt>{en ? "Username" : "用户名"}</dt><dd>{user.username}</dd></dl>

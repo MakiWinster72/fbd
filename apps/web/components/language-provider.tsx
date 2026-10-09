@@ -41,11 +41,21 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   return (
     <LanguageContext.Provider value={{ locale, changeLocale, saving, error, t: (text) => translate(locale, text) }}>
+      <header className="site-masthead">
+        <a className="site-identity" href="/">
+          <span className="site-monogram" aria-hidden="true">G</span>
+          <span><strong>{locale === "en" ? "Knowledge Base" : "知识库"}</strong><small>{locale === "en" ? "Research · Documents · Evidence" : "研究 · 资料 · 证据"}</small></span>
+        </a>
+        <nav className="site-navigation" aria-label={locale === "en" ? "Site navigation" : "网站导航"}>
+          <a href="/">{locale === "en" ? "Workspace" : "工作台"}</a>
+          <a href="/account">{locale === "en" ? "Account" : "用户中心"}</a>
+          <button className="language-switch" type="button" disabled={saving} onClick={() => { void changeLocale(locale === "zh-CN" ? "en" : "zh-CN").catch(() => {}); }} aria-label={locale === "en" ? "Change language" : "切换语言"}>
+            {locale === "en" ? "Language: English" : "语言：中文"}<span aria-hidden="true"> ⇄</span>
+          </button>
+        </nav>
+      </header>
+      {error ? <p className="site-language-error" role="alert">{locale === "en" ? "Language could not be saved. Please retry." : "语言保存失败，请重试。"}</p> : null}
       {children}
-      {error ? <p role="alert">{locale === "en" ? "Language could not be saved. Please retry." : "语言保存失败，请重试。"}</p> : null}
-      <button className="language-switch" type="button" disabled={saving} onClick={() => { void changeLocale(locale === "zh-CN" ? "en" : "zh-CN").catch(() => {}); }} aria-label={locale === "zh-CN" ? "Switch to English" : "切换为中文"} title={locale === "zh-CN" ? "Switch to English" : "切换为中文"}>
-        {locale === "zh-CN" ? "EN" : "中文"}
-      </button>
     </LanguageContext.Provider>
   );
 }

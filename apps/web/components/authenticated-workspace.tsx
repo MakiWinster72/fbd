@@ -41,7 +41,7 @@ export function AuthenticatedWorkspace() {
     return (
       <main className="empty-access-shell">
         <div className="login-seal" aria-hidden="true">知</div>
-        <p className="section-kicker">ACCESS REQUIRED</p>
+        <p className="section-kicker">{t("访问权限")}</p>
         <h1>{t("尚未分配知识库")}</h1>
         <a href="/account">{locale === "en" ? "User center" : "用户中心"}</a>
         <p>{t("当前账号可以登录，但没有任何知识库访问权限。请联系管理员完成授权。")}</p>

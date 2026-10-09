@@ -232,7 +232,7 @@ export default function AdminDocumentsPage() {
     <main className="admin-shell document-intake-shell">
       <header className="admin-header">
         <div>
-          <p className="section-kicker">DOCUMENT INTAKE</p>
+          <p className="section-kicker">{t("资料入库")}</p>
           <h1>{t("文件导入")}</h1>
           <p>{t("先核对文件、解析方式和目标知识库，再交给后台完成解析与向量化。")}</p>
         </div>
@@ -255,7 +255,7 @@ export default function AdminDocumentsPage() {
         <div className="intake-main-column">
           <section className="intake-panel">
             <div className="intake-panel-heading">
-              <div><p className="section-kicker">01 / SOURCE FILES</p><h2>{t("选择待导入文件")}</h2></div>
+              <div><p className="section-kicker">{t("01 / 选择原件")}</p><h2>{t("选择待导入文件")}</h2></div>
               <p>{t("支持多选；浏览器只读取文件名称和大小，尚未上传。")}</p>
             </div>
 
@@ -288,13 +288,13 @@ export default function AdminDocumentsPage() {
 
           <section className="intake-panel intake-queue-panel">
             <div className="intake-panel-heading">
-              <div><p className="section-kicker">02 / INTAKE MANIFEST</p><h2>{t("导入清单")} · {String(files.length).padStart(2, "0")}</h2></div>
+              <div><p className="section-kicker">{t("02 / 核对清单")}</p><h2>{t("导入清单")} · {String(files.length).padStart(2, "0")}</h2></div>
               {files.length ? <button className="intake-text-button" type="button" onClick={() => { setFiles([]); setReviewed(false); setSelectionNotice(""); }}>{t("清空清单")}</button> : null}
             </div>
 
             {!files.length ? (
               <div className="intake-empty-state">
-                <span>NO FILES</span>
+                <span>{t("暂无文件")}</span>
                 <p>{t("选择文件后，这里会逐项显示格式检查、大小和导入状态。")}</p>
               </div>
             ) : (
@@ -320,7 +320,7 @@ export default function AdminDocumentsPage() {
 
         <aside className="intake-sidebar">
           <section className="intake-config-card">
-            <p className="section-kicker">IMPORT SETTINGS</p>
+            <p className="section-kicker">{t("解析与入库设置")}</p>
             <h2>{t("处理设置")}</h2>
             <div className="intake-embedding-note"><strong>{t("当前 Embedding")}</strong><span>{embeddingError ? t(embeddingError) : embeddingProfile ? `${embeddingProfile.name} · ${embeddingProfile.model_name}${embeddingProfile.vector_dim ? ` · ${embeddingProfile.vector_dim} ${t("维")}` : ""}` : t("未启用 Embedding 模型")}</span><a href="/admin/models">{t("查看模型配置")}</a></div>
             <label><span>{t("目标知识库")}</span><select value={knowledgeBaseId} onChange={(event) => { setKnowledgeBaseId(event.target.value); setReviewed(false); }}>{knowledgeBases.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
@@ -342,7 +342,7 @@ export default function AdminDocumentsPage() {
         </aside>
       </section>
       <section className="intake-panel intake-jobs" aria-label={t("已入库文档")}>
-        <div className="intake-panel-heading"><div><p className="section-kicker">INDEXED DOCUMENTS</p><h2>{t("已入库文档")} · {documents.length}</h2></div></div>
+        <div className="intake-panel-heading"><div><p className="section-kicker">{t("知识库文档")}</p><h2>{t("已入库文档")} · {documents.length}</h2></div></div>
         <p className="intake-footnote">{t("显示当前知识库、当前向量索引中的全部文件。重新向量化使用保存的切块；如需重新解析原文件，请重新上传。")}</p>
         {documentError ? <p className="admin-error" role="alert">{t(documentError)}</p> : null}
         {!documents.length && !documentError ? <p className="intake-footnote">{t("当前知识库尚无已索引文档。")}</p> : documents.map((item) => (
@@ -363,7 +363,7 @@ export default function AdminDocumentsPage() {
         ))}
       </section>
       <section className="intake-panel intake-jobs" aria-live="polite">
-        <div className="intake-panel-heading"><div><p className="section-kicker">IMPORT HISTORY</p><h2>{t("导入任务")} · {visibleJobs.length}</h2></div><button className="intake-text-button" type="button" disabled={jobsRefreshing} onClick={() => void refreshJobs()}>{t(jobsRefreshing ? "正在刷新…" : "刷新任务")}</button></div>
+        <div className="intake-panel-heading"><div><p className="section-kicker">{t("任务记录")}</p><h2>{t("导入任务")} · {visibleJobs.length}</h2></div><button className="intake-text-button" type="button" disabled={jobsRefreshing} onClick={() => void refreshJobs()}>{t(jobsRefreshing ? "正在刷新…" : "刷新任务")}</button></div>
         <p className="intake-footnote">{t("显示最近 50 条任务；筛选只作用于当前已加载的记录。")}</p>
         {jobActionError ? <p className="admin-error" role="alert">{t(jobActionError)}</p> : null}
         <div className="intake-job-filters">

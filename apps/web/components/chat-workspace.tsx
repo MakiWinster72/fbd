@@ -234,10 +234,10 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
     <main className="workspace-shell">
       <header className="topbar">
         <div className="brand-block">
-          <div className="brand-seal" aria-hidden="true">知</div>
+          <div className="brand-seal" aria-hidden="true">G</div>
           <div>
-            <p className="eyebrow">KNOWLEDGE RAG · PRIVATE ARCHIVE</p>
-            <h1>Knowledge RAG</h1>
+            <p className="eyebrow">{t("私有知识工作台")}</p>
+            <h1>{t("知识库工作台")}</h1>
           </div>
         </div>
         <div className="topbar-meta">
@@ -278,7 +278,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
         <section className="conversation-panel" aria-label={t("知识库对话")}>
           <div className="conversation-heading">
             <div>
-              <p className="section-kicker">ASK THE ARCHIVE</p>
+              <p className="section-kicker">{t("资料问答")}</p>
               <h2>{t("从材料中寻找答案")}</h2>
             </div>
             <p className="conversation-note">{t("回答仅来自已入库文档，引用编号可定位到右侧证据。")}</p>
@@ -380,7 +380,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
         <aside className="evidence-panel" aria-label={t("引用来源")}>
           <div className="evidence-heading">
             <div>
-              <p className="section-kicker">EVIDENCE LEDGER</p>
+              <p className="section-kicker">{t("引用证据")}</p>
               <h2>{t("引用来源")}</h2>
             </div>
             <span className="source-count">{String(latestSources.length).padStart(2, "0")}</span>
@@ -417,7 +417,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
             <div className="mobile-sheet-handle" aria-hidden="true" />
             <header className="mobile-sheet-header">
               <div>
-                <p className="section-kicker">EVIDENCE LEDGER</p>
+                <p className="section-kicker">{t("引用证据")}</p>
                 <h2>{t("引用来源")} · {String(latestSources.length).padStart(2, "0")}</h2>
               </div>
               <button type="button" onClick={() => setMobileEvidenceOpen(false)} aria-label={t("关闭引用来源")}>{t("关闭")}</button>
