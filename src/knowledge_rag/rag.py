@@ -7,6 +7,8 @@ import unicodedata
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
+from knowledge_rag.conversation_context import HistoryTurn, resolve_question
+
 
 class Embedder(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
@@ -114,8 +116,8 @@ class RagService:
             document_names = _requested_document_names(question, self.store.list_documents(knowledge_base_id))
             if not document_names or len(document_names) > self.top_k:
                 return ()
-        page_range = _requested_page_range(question, document_names) if document_names else None
-        if page_range is not None and ((document_names is not None and len(document_names) > 1) or not (1 <= page_range[0] <= page_range[1] <= 2**63 - 1)):
+        page_range = _requested_page_range(question, document_names or ())
+        if page_range is not None and (len(document_names or ()) != 1 or not (1 <= page_range[0] <= page_range[1] <= 2**63 - 1)):
             return ()
         vector = self.embedder.embed([question])[0]
         search_limit = self.candidate_k if self.reranker is not None else self.top_k
@@ -181,8 +183,37 @@ class RagService:
             fallback = [source for source in candidates if source.score >= self.min_score]
             return _limit_sources(fallback, self.top_k, document_names)
 
-    def answer(self, question: str, knowledge_base_id: str, locale: str = "zh-CN") -> ChatResult:
+    def answer(self, question: str, knowledge_base_id: str, locale: str = "zh-CN", history: tuple[HistoryTurn, ...] = ()) -> ChatResult:
         english = locale == "en"
+        original_question = question
+        # Explicit inventory requests remain deterministic, even in long conversations.
+        if history and not _asks_document_inventory(question):
+            resolved = resolve_question(question, history, self.chat_model.complete)
+            valid = resolved is not None
+            if resolved is not None:
+                requested: tuple[str, ...] = ()
+                resolved_names: tuple[str, ...] = ()
+                # Never let model rewriting broaden explicit current file/page scope.
+                if _has_document_reference(question) or _has_document_reference(resolved):
+                    available = self.store.list_documents(knowledge_base_id)
+                    requested = _requested_document_names(question, available)
+                    resolved_names = _requested_document_names(resolved, available)
+                if _has_document_reference(question):
+                    valid = bool(requested) and requested == resolved_names
+                pages = _requested_page_range(question, requested)
+                resolved_pages = _requested_page_range(resolved, resolved_names)
+                if pages is not None:
+                    valid = valid and pages == resolved_pages
+                # A page selector must become a real single-file search filter,
+                # including a selector inherited from the preceding question.
+                if resolved_pages is not None:
+                    valid = valid and len(resolved_names) == 1 and 1 <= resolved_pages[0] <= resolved_pages[1] <= 2**63 - 1
+            if not valid or resolved is None:
+                return ChatResult(
+                    "Please specify the subject, document, or page you mean." if english else "请明确要追问的对象、文档或页码。",
+                    False, (),
+                )
+            question = resolved
         if _asks_document_inventory(question):
             documents = self.store.list_documents(knowledge_base_id)
             if not documents:
@@ -203,7 +234,7 @@ class RagService:
             + f"\n{source.content}"
             for source in sources
         )
-        prompt = f"问题：{question}\n\n检索证据：\n{evidence}"
+        prompt = f"问题：{question}\n用户本轮原话：{original_question}\n问题和消解后的指代仅用于定位主题，不是事实证据。\n\n检索证据：\n{evidence}"
         system_prompt = SYSTEM_PROMPT_EN if english else SYSTEM_PROMPT
         answer = self.chat_model.complete(system_prompt, prompt)
         answer = _remove_invalid_citations(answer, len(sources))
@@ -340,15 +371,27 @@ def _limit_sources(sources: list[RetrievedSource], limit: int, document_names: t
 def _asks_document_inventory(question: str) -> bool:
     if _has_document_reference(question):
         return False
-    text = re.sub(r"\s+", "", question)
-    return bool(
-        re.search(r"(?:what|which|list|how many).{0,40}(?:documents?|files?)", question, re.I)
-        or re.search(r"(?:documents?|files?).{0,40}(?:in (?:this|the) (?:knowledge base|archive)|are (?:there|indexed))", question, re.I)
-        or re.search(r"(?:知识库|资料库|已入库).*(?:有什么|有哪些|有多少|几份|多少份|文件|文档|材料|目录|清单)", text)
-        or re.search(r"(?:只有|仅有|就).{0,10}(?:份|篇|个).{0,8}(?:材料|文件|文档)", text)
-        or re.search(r"(?:有哪些|有多少|列出|总共|一共).{0,12}(?:文档|文件|材料)", text)
-        or re.search(r"(?:文档|文件|材料).{0,12}(?:几份|多少份|清单|目录)", text)
+    # Match the entire request: content questions mentioning files are not a catalog.
+    text = re.sub(r"\s+", " ", unicodedata.normalize("NFKC", question)).strip().casefold()
+    text = re.sub(r"[?!。.! ]+$", "", text)
+    english = (
+        r"(?:please\s+)?(?:"
+        r"(?:what|which|how\s+many)\s+(?:documents|files)"
+        r"(?:\s+(?:are(?:\s+(?:there|available|indexed|stored))?|do\s+you\s+have))?"
+        r"|(?:list|show(?:\s+me)?)\s+(?:(?:all|the|available|indexed|stored)\s+)*(?:documents|files)"
+        r"|(?:documents|files))"
+        r"(?:\s+(?:in|from|within)\s+(?:this|the|your)\s+(?:knowledge\s+base|archive|library))?"
     )
+    chinese = (
+        r"(?:请问|请)?(?:你|您)?(?:的)?(?:列出|展示|显示)?"
+        r"(?:(?:当前|这个)?(?:知识库|资料库)(?:里面|里|中)?的?|已入库的?)?"
+        r"(?:"
+        r"(?:有什么|有哪些|有多少|几份|多少份)(?:文档|文件|材料|资料)?"
+        r"|(?:列出|展示|显示)?(?:所有|全部)?(?:文档|文件|材料|资料)(?:有几份|有多少份|几份|多少份|清单|目录|列表)?"
+        r"|(?:只有|仅有|就)(?:这|那)?[一二两三四五六七八九十几\d]+(?:份|篇|个)(?:文档|文件|材料|资料)"
+        r")(?:吗|呢)?"
+    )
+    return bool(re.fullmatch(english, text) or re.fullmatch(chinese, text.replace(" ", "")))
 
 
 def _excerpt_from_content(content: str) -> str:

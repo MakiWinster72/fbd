@@ -499,6 +499,7 @@ def create_app(
         if not await run_in_threadpool(store.user_can_access, user, payload.knowledge_base_id):
             raise HTTPException(status_code=403, detail="没有访问该知识库的权限")
         conversation_id = str(payload.conversation_id) if payload.conversation_id is not None else None
+        context = ()
         if conversation_id is not None:
             if user.id == "development":
                 raise HTTPException(status_code=401, detail="请先登录")
@@ -507,11 +508,15 @@ def create_app(
                 raise HTTPException(status_code=400, detail="会话与知识库不一致")
             if conversation.turn_count >= MAX_CONVERSATION_TURNS:
                 raise HTTPException(status_code=400, detail="会话已达到200轮，请新建会话")
+            context = await history_call(history.context, user.id, conversation_id, payload.knowledge_base_id)
         service = get_rag_service(request)
         try:
-            result = await run_in_threadpool(service.answer, payload.question, payload.knowledge_base_id, payload.locale)
+            if context:
+                result = await run_in_threadpool(service.answer, payload.question, payload.knowledge_base_id, payload.locale, context)
+            else:
+                result = await run_in_threadpool(service.answer, payload.question, payload.knowledge_base_id, payload.locale)
         except Exception as exc:
-            raise HTTPException(status_code=503, detail=f"Chat failed: {exc}") from exc
+            raise HTTPException(status_code=503, detail="Chat failed") from exc
         response = ChatResponse(
             answer=result.answer,
             grounded=result.grounded,

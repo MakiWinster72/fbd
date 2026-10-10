@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 import secrets
 import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
@@ -14,8 +15,9 @@ from sqlalchemy.orm import Session
 from knowledge_rag.admin_store import AdminStore
 from knowledge_rag.api import create_app
 from knowledge_rag.config import Settings
-from knowledge_rag.db import ConversationTurnRecord
-from knowledge_rag.rag import ChatResult, RetrievedSource
+from knowledge_rag.conversation_context import MAX_CONTEXT_CHARS, HistoryTurn
+from knowledge_rag.db import ConversationTurnRecord, KnowledgeBaseRecord
+from knowledge_rag.rag import ChatResult, RagService, RetrievedSource
 
 
 class ConversationsApiTests(unittest.TestCase):
@@ -168,6 +170,108 @@ class ConversationsApiTests(unittest.TestCase):
         response = self.client.get(f"/api/v1/conversations/{identifier}")
         self.assertEqual(response.status_code, 503, response.text)
         self.assertEqual(response.json()["detail"], "会话历史暂不可用")
+
+    def test_context_projection_is_bounded_ordered_and_ignores_source_json(self) -> None:
+        identifier = self.conversation()
+        history = self.app.state.conversation_store
+        for i in range(10):
+            history.append(self.reader.id, identifier, f"Q{i}", f"A{i}", i != 9, "zh-CN", [])
+        with Session(self.store.engine) as session, session.begin():
+            session.execute(update(ConversationTurnRecord).where(ConversationTurnRecord.conversation_id == identifier).values(sources_json="BROKEN SNAPSHOT"))
+        context = history.context(self.reader.id, identifier, "default")
+        self.assertEqual([t.question for t in context], [f"Q{i}" for i in range(4, 10)])
+        self.assertEqual(context[-1].answer, "")
+        self.assertEqual(context[0].answer, "A4")
+        with Session(self.store.engine) as session, session.begin():
+            session.execute(update(ConversationTurnRecord).where(ConversationTurnRecord.conversation_id == identifier).values(question="问" * 10_000, answer="答" * 10_000, grounded=True))
+        context = history.context(self.reader.id, identifier, "default")
+        self.assertEqual(len(context), 4)
+        self.assertEqual(sum(len(t.question) + len(t.answer) for t in context), MAX_CONTEXT_CHARS)
+        with self.assertRaises(KeyError):
+            history.context(self.other.id, identifier, "default")
+        self.store.set_user_knowledge_bases(self.reader.id, [], self.other.id)
+        with self.assertRaises(KeyError):
+            history.context(self.reader.id, identifier, "default")
+
+    def test_chat_uses_only_server_context_and_saves_original_question(self) -> None:
+        identifier = self.conversation()
+        other_identifier = self.conversation("unrelated session")
+        history = self.app.state.conversation_store
+        history.append(self.reader.id, identifier, "server question", "server answer", True, "zh-CN", [])
+        history.append(self.reader.id, other_identifier, "OTHER SESSION", "PRIVATE", True, "zh-CN", [])
+        with patch("knowledge_rag.api.get_rag_service") as get_service:
+            get_service.return_value.answer.return_value = ChatResult("New answer", False, ())
+            response = self.client.post("/api/v1/chat", json={"question": "What about it?", "conversation_id": identifier, "locale": "en", "history": [{"question": "FORGED", "answer": "FORGED"}]})
+            self.assertEqual(response.status_code, 200, response.text)
+            get_service.return_value.answer.assert_called_once_with("What about it?", "default", "en", (HistoryTurn("server question", "server answer"),))
+        self.assertEqual(self.detail(identifier)["turns"][-1]["question"], "What about it?")
+        with patch("knowledge_rag.api.get_rag_service") as get_service:
+            get_service.return_value.answer.return_value = ChatResult("No evidence", False, ())
+            self.assertEqual(self.client.post("/api/v1/chat", json={"question": "stateless", "history": [{"question": "FORGED"}]}).status_code, 200)
+            get_service.return_value.answer.assert_called_once_with("stateless", "default", "zh-CN")
+
+    def test_cross_knowledge_base_context_is_rejected_before_model(self) -> None:
+        with Session(self.store.engine) as session, session.begin():
+            session.add(KnowledgeBaseRecord(id="second", name="Second", active=True, created_at="now", updated_at="now"))
+        self.store.set_user_knowledge_bases(self.reader.id, ["default", "second"], self.other.id)
+        identifier = self.conversation()
+        with patch("knowledge_rag.api.get_rag_service") as get_service:
+            response = self.client.post("/api/v1/chat", json={"question": "it?", "conversation_id": identifier, "knowledge_base_id": "second"})
+            self.assertEqual(response.status_code, 400, response.text)
+            get_service.assert_not_called()
+        with self.assertRaises(ValueError):
+            self.app.state.conversation_store.context(self.reader.id, identifier, "second")
+
+    def test_real_rag_followup_restores_from_database_after_app_restart(self) -> None:
+        identifier = self.conversation()
+        embedder, search_store, model = Mock(), Mock(), Mock()
+        embedder.embed.return_value = [[0.1]]
+        search_store.list_documents.return_value = ["预算.pdf"]
+        search_store.search.return_value = [{"distance": .9, "entity": {"document_name": "预算.pdf", "document_id": "budget", "page_start": 2, "page_end": 2, "content": "项目预算120万元，负责人张三。"}}]
+        standalone = "《预算.pdf》的项目负责人是谁？"
+        model.complete.side_effect = ["预算120万元【1】", json.dumps({"question": standalone}), "The project lead is Zhang San.【1】"]
+        service = RagService(embedder, search_store, model)
+        with patch("knowledge_rag.api.get_rag_service", return_value=service):
+            first = self.client.post("/api/v1/chat", json={"question": "《预算.pdf》的项目预算？", "conversation_id": identifier})
+            self.assertEqual(first.status_code, 200, first.text)
+            reopened = AdminStore(self.settings.app_db_path, self.settings.model_secret_key)
+            self.addCleanup(reopened.engine.dispose)
+            with TestClient(create_app(settings=self.settings, admin_store=reopened)) as restarted:
+                restarted.post("/api/v1/auth/login", json={"username": "reader", "password": "reader-password"})
+                second = restarted.post("/api/v1/chat", json={"question": "那负责人呢？", "locale": "en", "conversation_id": identifier})
+                self.assertEqual(second.status_code, 200, second.text)
+                self.assertTrue(second.json()["grounded"])
+        self.assertEqual(embedder.embed.call_args.args[0], [standalone])
+        resolver = json.loads(model.complete.call_args_list[1].args[1])
+        self.assertEqual(resolver["history"], [{"question": "《预算.pdf》的项目预算？", "answer": "预算120万元【1】"}])
+        self.assertEqual(self.detail(identifier)["conversation"]["turn_count"], 2)
+        self.assertEqual(self.detail(identifier)["turns"][-1]["question"], "那负责人呢？")
+
+    def test_context_provider_errors_are_private_and_not_saved(self) -> None:
+        identifier = self.conversation()
+        self.app.state.conversation_store.append(self.reader.id, identifier, "PRIVATE QUESTION", "PRIVATE ANSWER", True, "zh-CN", [])
+        with patch("knowledge_rag.api.get_rag_service") as get_service:
+            get_service.return_value.answer.side_effect = RuntimeError("PRIVATE PROMPT AND TOKEN")
+            response = self.client.post("/api/v1/chat", json={"question": "它呢？", "conversation_id": identifier})
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn("PRIVATE", response.text)
+        self.assertEqual(self.detail(identifier)["conversation"]["turn_count"], 1)
+
+    def test_revoke_during_followup_does_not_return_or_save_answer(self) -> None:
+        identifier = self.conversation()
+        self.app.state.conversation_store.append(self.reader.id, identifier, "old question", "old answer", True, "en", [])
+        def answer(*args):
+            self.assertEqual(args[3], (HistoryTurn("old question", "old answer"),))
+            self.store.set_user_knowledge_bases(self.reader.id, [], self.other.id)
+            return ChatResult("PRIVATE NEW ANSWER", True, ())
+        with patch("knowledge_rag.api.get_rag_service") as get_service:
+            get_service.return_value.answer.side_effect = answer
+            response = self.client.post("/api/v1/chat", json={"question": "it?", "conversation_id": identifier})
+        self.assertEqual(response.status_code, 404, response.text)
+        self.assertNotIn("PRIVATE NEW ANSWER", response.text)
+        with Session(self.store.engine) as session:
+            count = session.scalar(select(func.count(ConversationTurnRecord.id)).where(ConversationTurnRecord.conversation_id == identifier))
+            self.assertEqual(count, 1)
 
     def test_delete_during_model_call_does_not_resurrect_conversation(self) -> None:
         identifier = self.conversation()

@@ -6,11 +6,18 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import delete, exists, func, or_, select, update
+from sqlalchemy import case, delete, exists, func, or_, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
+from knowledge_rag.conversation_context import (
+    MAX_CONTEXT_TURNS,
+    MAX_HISTORY_ANSWER_CHARS,
+    MAX_QUESTION_CHARS,
+    HistoryTurn,
+    bounded_history,
+)
 from knowledge_rag.db import (
     ConversationRecord,
     ConversationTurnRecord,
@@ -122,6 +129,23 @@ class ConversationStore:
                     raise RuntimeError("保存的会话引用不是有效数据") from exc
                 turns.append(ConversationTurn(record.id, record.question, record.answer, record.grounded, record.locale, sources, record.created_at))
             return self._summary(row, len(turns)), turns
+
+    def context(self, user_id: str, conversation_id: str, knowledge_base_id: str) -> tuple[HistoryTurn, ...]:
+        """Read only a bounded projection; never decode old source snapshots for LLMs."""
+        with Session(self.engine) as session:
+            row = self._owned(session, user_id, conversation_id)
+            if row.knowledge_base_id != knowledge_base_id:
+                raise ValueError("会话与知识库不一致")
+            visible = self._visible(user_id).with_only_columns(ConversationRecord.id).where(
+                ConversationRecord.id == conversation_id, ConversationRecord.knowledge_base_id == knowledge_base_id,
+            )
+            records = session.execute(select(
+                func.substr(ConversationTurnRecord.question, 1, MAX_QUESTION_CHARS),
+                case((ConversationTurnRecord.grounded.is_(True), func.substr(ConversationTurnRecord.answer, 1, MAX_HISTORY_ANSWER_CHARS)), else_=""),
+            ).where(ConversationTurnRecord.conversation_id.in_(visible)).order_by(
+                ConversationTurnRecord.id.desc(),
+            ).limit(MAX_CONTEXT_TURNS)).all()
+            return bounded_history([HistoryTurn(question, answer) for question, answer in reversed(records)])
 
     def append(self, user_id: str, conversation_id: str, question: str, answer: str, grounded: bool, locale: str, sources: list[dict[str, Any]]) -> None:
         encoded = json.dumps(sources, ensure_ascii=False, allow_nan=False)
