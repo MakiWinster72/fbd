@@ -15,7 +15,30 @@ export type ChatResponse = {
   answer: string;
   grounded: boolean;
   sources: Source[];
+  conversation_id?: string | null;
 };
+
+export type Conversation = {
+  id: string;
+  knowledge_base_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  turn_count: number;
+};
+
+export type ConversationTurn = {
+  id: number;
+  question: string;
+  answer: string;
+  grounded: boolean;
+  locale: "zh-CN" | "en";
+  sources: Source[];
+  created_at: string;
+};
+
+export type ConversationDetail = { conversation: Conversation; turns: ConversationTurn[] };
+export type ConversationList = { items: Conversation[]; has_more: boolean };
 
 export type HealthResponse = {
   status: "ok" | "degraded";
@@ -106,11 +129,28 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json();
 }
 
-export function askKnowledgeBase(question: string, knowledgeBaseId: string, locale: "zh-CN" | "en" = "zh-CN"): Promise<ChatResponse> {
+export function askKnowledgeBase(question: string, knowledgeBaseId: string, locale: "zh-CN" | "en" = "zh-CN", conversationId?: string): Promise<ChatResponse> {
   return apiRequest("/api/v1/chat", {
     method: "POST",
-    body: JSON.stringify({ question, knowledge_base_id: knowledgeBaseId, locale }),
+    body: JSON.stringify({ question, knowledge_base_id: knowledgeBaseId, locale, ...(conversationId ? { conversation_id: conversationId } : {}) }),
   });
+}
+
+export function createConversation(knowledgeBaseId: string, title: string): Promise<Conversation> {
+  return apiRequest("/api/v1/conversations", { method: "POST", body: JSON.stringify({ knowledge_base_id: knowledgeBaseId, title }) });
+}
+
+export function listConversations(knowledgeBaseId: string, offset = 0): Promise<ConversationList> {
+  const params = new URLSearchParams({ knowledge_base_id: knowledgeBaseId, offset: String(offset), limit: "30" });
+  return apiRequest(`/api/v1/conversations?${params}`);
+}
+
+export function getConversation(id: string): Promise<ConversationDetail> {
+  return apiRequest(`/api/v1/conversations/${encodeURIComponent(id)}`);
+}
+
+export function deleteConversation(id: string): Promise<void> {
+  return apiRequest(`/api/v1/conversations/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export function fetchHealth(): Promise<HealthResponse> {

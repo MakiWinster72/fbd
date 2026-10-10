@@ -1,3 +1,4 @@
+- 按登录账号隔离的会话历史，支持刷新恢复、逐轮引用、新建与删除；
 多个 API 进程处理文档时，必须连接**同一业务数据库**，并共享同一个 `RAG_DATA_DIR`（上传原件与规范化切块）。文档导入、重试、删除和重新向量化使用数据库租约协调；运行中的进程每 15 秒续租，崩溃后租约最长约 120 秒失效，再次启动、查询任务列表或重试时会将过期任务标记为失败。部署前先运行上面的 Alembic 迁移。租约不能为 Milvus 写入提供跨系统事务：数据库长期不可用或进程在写入中途失去租约时，仍需人工核对索引状态。导入时会先持久化索引提交意图，再写 Milvus，并原子替换本地切块缓存；对于失败或中断的**新文档**，服务启动、查询任务或重试时会按意图清理不完整索引。已有文档的重新嵌入失败不会删除旧文档，但极端故障下新旧向量可能混杂，仍需人工核验后重建。
 
 
@@ -10,6 +11,19 @@ GET  /api/v1/admin/document-imports
 POST /api/v1/admin/document-imports
 POST /api/v1/admin/document-imports/{job_id}/retry
 POST /api/v1/admin/document-imports/{job_id}/discard
+## 会话历史
+
+登录用户可在工作台选择历史会话、恢复消息、新建会话和删除当前会话。首问自动创建会话，浏览器 URL 的 `conversation` 参数支持刷新恢复；会话列表按知识库过滤。上线前运行 `uv run alembic upgrade head`，使用已有的业务数据库保存历史。
+
+- `POST /api/v1/conversations`：创建；`GET /api/v1/conversations`：列表（`knowledge_base_id`、`limit`、`offset`）。
+- `GET /api/v1/conversations/{id}`：详情；`DELETE /api/v1/conversations/{id}`：删除全部轮次。
+- `POST /api/v1/chat` 可带 `conversation_id`，仅成功生成并完成保存后返回答案；失败不保存部分轮次，最多 200 轮。
+- 只有会话所属账号可读写或删除，管理员也不能访问他人的会话。每次读取及保存检查当前知识库权限；撤权后隐藏历史，但所属账号仍可删除。
+- 保存事务通过数据库锁与授权替换、账号及知识库状态修改串行化，取得锁后重新校验权限，不在模型调用期间持锁。撤权/停用先提交则不保存或返回该答案；保存先取得锁则允许先提交，随后的撤权会隐藏历史。SQLite 使用写事务，PostgreSQL 使用用户行锁与知识库共享锁，不依赖同进程互斥。
+- 可运行 `uv run python scripts/check_conversation_concurrency.py` 验证两个连接在授权检查后和父行更新后的交错。需要 Docker 及已缓存的 `postgres:17-alpine`；脚本不拉取镜像，使用随机凭据、仅回环端口及临时容器存储，结束时删除容器。普通测试默认跳过 PostgreSQL；显式 `KNOWLEDGE_TEST_POSTGRES_URL` 仅可指向专用本机 `knowledge_history_qa_` 数据库，测试会清理其表，勿用于任何真实数据库。
+- 每轮保存问题、答案、语言、依据状态及文件名/页码/摘要快照，不保存完整检索原文。早先轮次的引用不会被新答案替换；旧摘要并非当前索引状态或重新验证过的证据。
+- 不带 `conversation_id` 的旧请求以及开发模式仍是无状态问答。**保存历史暂不等于多轮上下文：当前每问仍独立检索，历史尚不传给模型。**
+
 ## 回答质量评测
 
 使用独立标注题集验证 Recall@K、MRR、引用、拒答与端到端延迟；支持在线 Cookie 登录和离线响应评分。真实资料题集与报告放在忽略目录 `data/evaluation/`，报告权限为 `0600`，示例仅使用合成资料。

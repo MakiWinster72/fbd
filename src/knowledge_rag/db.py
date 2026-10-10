@@ -50,6 +50,29 @@ class SessionRecord(Base):
     created_at: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
+class ConversationRecord(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    knowledge_base_id: Mapped[str] = mapped_column(String(128), ForeignKey("knowledge_bases.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(100), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+
+
+class ConversationTurnRecord(Base):
+    __tablename__ = "conversation_turns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[str] = mapped_column(String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    grounded: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    locale: Mapped[str] = mapped_column(String(5), nullable=False)
+    sources_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False)
+
 class ModelProfileRecord(Base):
     __tablename__ = "model_profiles"
 

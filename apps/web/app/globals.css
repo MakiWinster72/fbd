@@ -934,5 +934,15 @@
     .account-page dl { grid-template-columns: 100px minmax(0, 1fr); }
     .empty-access-shell { padding: 28px 16px; }
   }
+  .history-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 16px 28px; border-bottom: 1px solid var(--line); background: #f4f7f8; }
+  .history-controls label { color: var(--archive-blue); font-size: 13px; font-weight: 600; }
+  .history-controls select { flex: 1 1 200px; min-width: 0; max-width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: white; color: var(--archive-blue); font: inherit; font-size: 13px; }
+  .history-controls button { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: white; color: var(--blueprint-dark); font: inherit; font-size: 13px; cursor: pointer; }
+  .history-controls button:hover:not(:disabled) { background: #e6efec; }
+  .history-controls button:disabled, .history-controls select:disabled { opacity: .55; cursor: wait; }
+  .history-controls :is(button, select):focus-visible { outline: 2px solid var(--blueprint-dark); outline-offset: 3px; }
+  .history-controls p { flex-basis: 100%; margin: 0; color: #5d6e7b; font-size: 12px; line-height: 1.6; }
+  .history-controls .history-error { color: #a1362a; }
+  @media (max-width: 760px) { .history-controls { padding: 16px; } .history-controls label { flex-basis: 100%; } .history-controls select { flex-basis: 100%; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 }

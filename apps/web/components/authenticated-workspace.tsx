@@ -49,5 +49,5 @@ export function AuthenticatedWorkspace() {
       </main>
     );
   }
-  return <ChatWorkspace currentUser={user} knowledgeBases={knowledgeBases} />;
+  return <ChatWorkspace key={user.id} currentUser={user} knowledgeBases={knowledgeBases} />;
 }

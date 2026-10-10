@@ -5,7 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import (
     Cookie,
@@ -14,6 +14,7 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
     Request,
     Response,
     UploadFile,
@@ -34,6 +35,8 @@ from knowledge_rag.providers import (
 from knowledge_rag.rag import RagService, RetrievedSource
 from knowledge_rag.service_registry import EmbeddingIndexManager, RagServiceRegistry
 
+from .conversation_store import MAX_CONVERSATION_TURNS, ConversationStore
+
 KnowledgeBaseId = Annotated[str, Field(pattern=r"^[A-Za-z0-9._-]{1,128}$")]
 SESSION_COOKIE = "knowledge_session"
 
@@ -53,6 +56,7 @@ class SearchRequest(BaseModel):
 
 class ChatRequest(SearchRequest):
     locale: Literal["zh-CN", "en"] = "zh-CN"
+    conversation_id: UUID | None = None
 
 
 class SourceResponse(BaseModel):
@@ -82,6 +86,41 @@ class ChatResponse(BaseModel):
     answer: str
     grounded: bool
     sources: list[SourceResponse]
+    conversation_id: str | None = None
+
+
+class ConversationCreateRequest(BaseModel):
+    knowledge_base_id: KnowledgeBaseId = "default"
+    title: str = Field(default="新会话", min_length=1, max_length=100)
+
+
+class ConversationResponse(BaseModel):
+    id: str
+    knowledge_base_id: str
+    title: str
+    created_at: str
+    updated_at: str
+    turn_count: int
+
+
+class ConversationListResponse(BaseModel):
+    items: list[ConversationResponse]
+    has_more: bool
+
+
+class ConversationTurnResponse(BaseModel):
+    id: int
+    question: str
+    answer: str
+    grounded: bool
+    locale: Literal["zh-CN", "en"]
+    sources: list[SourceResponse]
+    created_at: str
+
+
+class ConversationDetailResponse(BaseModel):
+    conversation: ConversationResponse
+    turns: list[ConversationTurnResponse]
 
 
 class HealthResponse(BaseModel):
@@ -256,6 +295,12 @@ def get_current_user(request: Request, knowledge_session: str | None = Cookie(de
     return user
 
 
+def require_account(user: User = Depends(get_current_user)) -> User:
+    if user.id == "development":
+        raise HTTPException(status_code=401, detail="请先登录")
+    return user
+
+
 def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要管理员权限")
@@ -323,6 +368,47 @@ def create_app(
     app.state.rag_registry = registry
     app.state.index_manager = index_manager
     app.state.document_import_manager = import_manager
+    history = ConversationStore(store.engine)
+    app.state.conversation_store = history
+
+    @app.middleware("http")
+    async def private_history_headers(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/api/v1/conversations"):
+            response.headers["Cache-Control"] = "private, no-store"
+        return response
+
+    async def history_call(method, *args, **kwargs):
+        try:
+            return await run_in_threadpool(method, *args, **kwargs)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="会话不存在") from exc
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail="没有访问该知识库的权限") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="会话历史暂不可用") from exc
+
+    @app.post("/api/v1/conversations", response_model=ConversationResponse, status_code=201)
+    async def create_conversation(payload: ConversationCreateRequest, user: User = Depends(require_account)) -> ConversationResponse:
+        item = await history_call(history.create, user.id, payload.knowledge_base_id, payload.title)
+        return ConversationResponse(**asdict(item))
+
+    @app.get("/api/v1/conversations", response_model=ConversationListResponse)
+    async def list_conversations(knowledge_base_id: KnowledgeBaseId | None = None, limit: int = Query(default=30, ge=1, le=100), offset: int = Query(default=0, ge=0), user: User = Depends(require_account)) -> ConversationListResponse:
+        items, has_more = await history_call(history.list, user.id, knowledge_base_id, limit, offset)
+        return ConversationListResponse(items=[ConversationResponse(**asdict(item)) for item in items], has_more=has_more)
+
+    @app.get("/api/v1/conversations/{conversation_id}", response_model=ConversationDetailResponse)
+    async def get_conversation(conversation_id: UUID, user: User = Depends(require_account)) -> ConversationDetailResponse:
+        item, turns = await history_call(history.get, user.id, str(conversation_id))
+        return ConversationDetailResponse(conversation=ConversationResponse(**asdict(item)), turns=[ConversationTurnResponse(**asdict(turn)) for turn in turns])
+
+    @app.delete("/api/v1/conversations/{conversation_id}", status_code=204)
+    async def delete_conversation(conversation_id: UUID, user: User = Depends(require_account)) -> Response:
+        await history_call(history.delete, user.id, str(conversation_id))
+        return Response(status_code=204)
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
@@ -412,16 +498,29 @@ def create_app(
     async def chat(payload: ChatRequest, request: Request, user: User = Depends(get_current_user)) -> ChatResponse:
         if not await run_in_threadpool(store.user_can_access, user, payload.knowledge_base_id):
             raise HTTPException(status_code=403, detail="没有访问该知识库的权限")
+        conversation_id = str(payload.conversation_id) if payload.conversation_id is not None else None
+        if conversation_id is not None:
+            if user.id == "development":
+                raise HTTPException(status_code=401, detail="请先登录")
+            conversation = await history_call(history.inspect, user.id, conversation_id)
+            if conversation.knowledge_base_id != payload.knowledge_base_id:
+                raise HTTPException(status_code=400, detail="会话与知识库不一致")
+            if conversation.turn_count >= MAX_CONVERSATION_TURNS:
+                raise HTTPException(status_code=400, detail="会话已达到200轮，请新建会话")
         service = get_rag_service(request)
         try:
             result = await run_in_threadpool(service.answer, payload.question, payload.knowledge_base_id, payload.locale)
         except Exception as exc:
             raise HTTPException(status_code=503, detail=f"Chat failed: {exc}") from exc
-        return ChatResponse(
+        response = ChatResponse(
             answer=result.answer,
             grounded=result.grounded,
             sources=[SourceResponse.from_source(source) for source in result.sources],
+            conversation_id=conversation_id,
         )
+        if conversation_id is not None:
+            await history_call(history.append, user.id, conversation_id, payload.question, response.answer, response.grounded, payload.locale, [source.model_dump() for source in response.sources])
+        return response
 
     @app.get("/api/v1/admin/users", response_model=list[AdminUserResponse])
     async def list_users(_: User = Depends(require_admin)) -> list[AdminUserResponse]:
@@ -476,7 +575,9 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         user = store.get_user(user_id)
-        return AdminUserResponse.from_user_with_access(user, access)  # type: ignore[arg-type]
+        if user is None:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        return AdminUserResponse.from_user_with_access(user, access)
 
     @app.get("/api/v1/admin/documents")
     async def list_admin_documents(knowledge_base_id: KnowledgeBaseId, _: User = Depends(require_admin)) -> list[dict[str, object]]:
@@ -664,7 +765,9 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         registry.invalidate()
         profile = store.get_profile(profile_id)
-        return _profile_response(profile, store)  # type: ignore[arg-type]
+        if profile is None:
+            raise HTTPException(status_code=404, detail="模型配置不存在")
+        return _profile_response(profile, store)
 
     @app.post("/api/v1/admin/model-profiles/{profile_id}/activate-reranker", response_model=ModelProfileResponse)
     async def activate_reranker(profile_id: str, admin: User = Depends(require_admin)) -> ModelProfileResponse:
@@ -674,7 +777,9 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         registry.invalidate()
         profile = store.get_profile(profile_id)
-        return _profile_response(profile, store)  # type: ignore[arg-type]
+        if profile is None:
+            raise HTTPException(status_code=404, detail="模型配置不存在")
+        return _profile_response(profile, store)
 
     @app.post("/api/v1/admin/model-profiles/deactivate-reranker", status_code=204)
     async def deactivate_reranker(admin: User = Depends(require_admin)) -> Response:
@@ -689,7 +794,9 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         job = store.get_index_job(job_id)
-        return IndexJobResponse.from_job(job)  # type: ignore[arg-type]
+        if job is None:
+            raise HTTPException(status_code=404, detail="索引任务不存在")
+        return IndexJobResponse.from_job(job)
 
     @app.get("/api/v1/admin/index-jobs/{job_id}", response_model=IndexJobResponse)
     async def get_index_job(job_id: str, _: User = Depends(require_admin)) -> IndexJobResponse:

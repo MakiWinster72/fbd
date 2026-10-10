@@ -352,7 +352,10 @@ class AdminStore:
     def set_user_knowledge_bases(self, user_id: str, knowledge_base_ids: list[str], actor_id: str) -> list[str]:
         unique_ids = sorted(set(knowledge_base_ids))
         with Session(self.engine) as session, session.begin():
-            if session.get(UserRecord, user_id) is None:
+            # Share the authorization lock with history append, even for an empty
+            # grant set; locking existing grants alone cannot serialize replacement.
+            locked = session.scalar(update(UserRecord).where(UserRecord.id == user_id).values(active=UserRecord.active).returning(UserRecord.id))
+            if locked is None:
                 raise KeyError(user_id)
             if unique_ids:
                 existing = set(

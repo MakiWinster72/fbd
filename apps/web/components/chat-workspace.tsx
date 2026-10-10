@@ -3,6 +3,7 @@
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { askKnowledgeBase, fetchHealth, logout, type CurrentUser, type KnowledgeBase, type Source } from "@/lib/api";
 import { useLanguage } from "@/components/language-provider";
+import { useConversationHistory } from "@/components/use-conversation-history";
 
 type Message = {
   id: string;
@@ -125,7 +126,6 @@ function SourceCards({
 
 export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: CurrentUser; knowledgeBases: KnowledgeBase[] }) {
   const { t, locale } = useLanguage();
-  const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState(knowledgeBases[0].id);
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
@@ -135,6 +135,22 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
   const [mobileEvidenceOpen, setMobileEvidenceOpen] = useState(false);
   const [activeCitation, setActiveCitation] = useState<number | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const history = useConversationHistory(currentUser.id, knowledgeBases, loading);
+  const selectedKnowledgeBaseId = history.knowledgeBaseId;
+  const busy = loading || history.restoring;
+
+  useEffect(() => {
+    const detail = history.replay.detail;
+    setMessages([INITIAL_MESSAGE, ...(detail?.turns.flatMap((turn): Message[] => [
+      { id: `turn-${turn.id}-user`, role: "user", content: turn.question },
+      { id: `turn-${turn.id}-assistant`, role: "assistant", content: turn.answer, sources: turn.sources, grounded: turn.grounded },
+    ]) ?? [])]);
+    setLatestSources(detail?.turns.at(-1)?.sources ?? []);
+    setActiveCitation(null);
+    setMobileEvidenceOpen(false);
+    setQuestion("");
+    setError(null);
+  }, [history.replay]);
 
   useEffect(() => {
     fetchHealth()
@@ -163,25 +179,24 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
     };
   }, [mobileEvidenceOpen, activeCitation]);
 
-  function openCitation(index: number) {
+  function openCitation(index: number, sources: Source[]) {
+    setLatestSources(sources);
+    setActiveCitation(index);
     if (window.matchMedia("(max-width: 760px)").matches) {
-      setActiveCitation(index);
       setMobileEvidenceOpen(true);
       return;
     }
-    document.getElementById(`source-${index}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    requestAnimationFrame(() => document.getElementById(`source-${index}`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
   }
 
   function changeKnowledgeBase(knowledgeBaseId: string) {
-    setSelectedKnowledgeBaseId(knowledgeBaseId);
-    setMessages([INITIAL_MESSAGE]);
-    setLatestSources([]);
-    setError(null);
+    if (busy) return;
+    history.changeKnowledgeBase(knowledgeBaseId);
   }
 
   async function submitQuestion(nextQuestion = question) {
     const value = nextQuestion.trim();
-    if (!value || loading) return;
+    if (!value || busy || !history.beginQuestion()) return;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -194,7 +209,8 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
     setLoading(true);
 
     try {
-      const response = await askKnowledgeBase(value, selectedKnowledgeBaseId, locale);
+      const conversationId = await history.ensureConversation(value);
+      const response = await askKnowledgeBase(value, selectedKnowledgeBaseId, locale, conversationId);
       const assistantMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
@@ -204,9 +220,14 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
       };
       setMessages((current) => [...current, assistantMessage]);
       setLatestSources(response.sources);
+      setActiveCitation(null);
+      history.refresh();
     } catch (caught) {
+      setMessages((current) => current.filter((message) => message.id !== userMessage.id));
+      setQuestion(value);
       setError(t(caught instanceof Error ? caught.message : "问答服务暂时不可用"));
     } finally {
+      history.endQuestion();
       setLoading(false);
     }
   }
@@ -251,6 +272,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
               <select
                 aria-label={t("选择知识库")}
                 value={selectedKnowledgeBaseId}
+                disabled={busy}
                 onChange={(event) => changeKnowledgeBase(event.target.value)}
               >
                 {knowledgeBases.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -285,12 +307,29 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
             {knowledgeBases.length > 1 ? (
               <label className="mobile-kb-selector">
                 <span>{t("当前知识库")}</span>
-                <select value={selectedKnowledgeBaseId} onChange={(event) => changeKnowledgeBase(event.target.value)}>
+                <select value={selectedKnowledgeBaseId} disabled={busy} onChange={(event) => changeKnowledgeBase(event.target.value)}>
                   {knowledgeBases.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
               </label>
             ) : null}
           </div>
+
+          {history.enabled ? (
+            <section className="history-controls" aria-label={t("会话历史")}>
+              <label htmlFor="conversation-history">{t("会话历史")}</label>
+              <select id="conversation-history" value={history.active?.id ?? ""} disabled={busy || history.listing} onChange={(event) => { if (event.target.value) void history.open(event.target.value); else history.startNew(); }}>
+                <option value="">{t(history.restoring ? "正在恢复会话…" : "新会话")}</option>
+                {history.active && !history.items.some((item) => item.id === history.active?.id) ? <option value={history.active.id}>{history.active.title}</option> : null}
+                {history.items.map((item) => <option key={item.id} value={item.id}>{item.title} · {item.turn_count} {t("轮问答")}</option>)}
+              </select>
+              <button type="button" disabled={busy} onClick={history.startNew}>{t("新建会话")}</button>
+              <button type="button" disabled={busy || !history.active} onClick={() => { if (window.confirm(t("删除此会话及全部消息？此操作无法撤销。"))) void history.remove(); }}>{t("删除会话")}</button>
+              <button type="button" disabled={busy || history.listing} onClick={history.refresh}>{t("刷新列表")}</button>
+              {history.hasMore ? <button type="button" disabled={busy || history.listing} onClick={() => void history.loadMore()}>{t("加载更多")}</button> : null}
+              <p>{t("会话仅对当前账号可见；历史答案及引用保留生成时的内容，本轮仍独立检索。")}</p>
+              {history.error ? <p className="history-error" role="alert">{t(history.error)}</p> : null}
+            </section>
+          ) : null}
 
           <div className="transcript" ref={transcriptRef} aria-live="polite">
             {messages.map((message) => (
@@ -300,7 +339,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
                 </div>
                 <div className="message-body">
                   {message.role === "assistant" ? (
-                    <AnswerContent message={message.id === "welcome" ? { ...message, content: t(message.content) } : message} onCitation={openCitation} />
+                    <AnswerContent message={message.id === "welcome" ? { ...message, content: t(message.content) } : message} onCitation={(index) => openCitation(index, message.sources ?? [])} />
                   ) : (
                     <p>{message.content}</p>
                   )}
@@ -365,9 +404,9 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
                   placeholder={t("例如：相关制度规定了哪些流程？")}
                   rows={2}
                   maxLength={2000}
-                  disabled={loading}
+                  disabled={busy}
                 />
-                <button className="send-button" type="submit" disabled={!question.trim() || loading}>
+                <button className="send-button" type="submit" disabled={!question.trim() || busy}>
                   <span>{t(loading ? "检索中" : "发送问题")}</span>
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
                 </button>
