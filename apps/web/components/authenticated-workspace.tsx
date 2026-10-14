@@ -32,14 +32,14 @@ export function AuthenticatedWorkspace() {
   }, []);
 
   if (error) {
-    return <main className="auth-status"><strong>{t("无法连接认证服务")}</strong><p>{t(error)}</p></main>;
+    return <main id="main-content" tabIndex={-1} className="auth-status"><strong>{t("无法连接认证服务")}</strong><p>{t(error)}</p></main>;
   }
   if (!user) {
-    return <main className="auth-status"><span className="auth-spinner" /><p>{t("正在验证登录状态…")}</p></main>;
+    return <main id="main-content" tabIndex={-1} className="auth-status"><span className="auth-spinner" /><p>{t("正在验证登录状态…")}</p></main>;
   }
   if (!knowledgeBases.length) {
     return (
-      <main className="empty-access-shell">
+      <main id="main-content" tabIndex={-1} className="empty-access-shell">
         <div className="login-seal" aria-hidden="true">知</div>
         <p className="section-kicker">{t("访问权限")}</p>
         <h1>{t("尚未分配知识库")}</h1>

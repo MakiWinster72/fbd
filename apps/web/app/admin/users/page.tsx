@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { AdminNav } from "@/components/admin-nav";
 import { useLanguage } from "@/components/language-provider";
 import {
   createAdminUser,
@@ -141,19 +142,20 @@ export default function AdminUsersPage() {
     }
   }
 
-  if (!currentUser) return <main className="auth-status"><span className="auth-spinner" /><p>{t(error || "正在验证管理员权限…")}</p></main>;
+  if (!currentUser) return <main id="main-content" tabIndex={-1} className="auth-status"><span className="auth-spinner" /><p>{t(error || "正在验证管理员权限…")}</p></main>;
 
   return (
-    <main className="admin-shell">
+    <main id="main-content" tabIndex={-1} className="admin-shell">
       <header className="admin-header">
         <div><p className="section-kicker">{t("账号与授权")}</p><h1>{t("用户与知识库权限")}</h1><p>{t("普通用户只能访问管理员明确授权的知识库。")}</p></div>
-        <nav><a href="/">{t("返回知识库")}</a><a href="/admin/documents">{t("文件导入")}</a><a href="/admin/models">{t("模型配置")}</a><button type="button" onClick={() => setShowCreate((value) => !value)}>{t(showCreate ? "取消新增" : "新增用户")}</button></nav>
+        <button className="primary-action" type="button" aria-expanded={showCreate} aria-controls="create-user" onClick={() => setShowCreate((value) => !value)}>{t(showCreate ? "取消新增" : "新增用户")}</button>
       </header>
+      <AdminNav />
 
       {error ? <p className="admin-error" role="alert">{t(error)}</p> : null}
 
       {showCreate ? (
-        <form className="create-profile-form create-user-form" onSubmit={createUser}>
+        <form id="create-user" className="create-profile-form create-user-form" onSubmit={createUser}>
           <div><p className="section-kicker">{t("新增账号")}</p><h2>{t("创建用户")}</h2></div>
           <label><span>{t("用户名")}</span><input required pattern="[A-Za-z0-9._-]{2,80}" value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} /></label>
           <label><span>{t("显示名称")}</span><input required value={form.display_name} onChange={(event) => setForm({ ...form, display_name: event.target.value })} /></label>

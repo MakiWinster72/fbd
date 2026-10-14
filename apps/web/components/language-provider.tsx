@@ -1,6 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { translate, type Locale } from "@/lib/i18n";
 import { getCurrentUser, updateLocalePreference } from "@/lib/api";
 
@@ -9,6 +11,7 @@ const LanguageContext = createContext<LanguageContextValue | null>(null);
 const STORAGE_KEY = "knowledge-rag-language";
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [locale, setLocale] = useState<Locale>("zh-CN");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -41,16 +44,17 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   return (
     <LanguageContext.Provider value={{ locale, changeLocale, saving, error, t: (text) => translate(locale, text) }}>
+      <a className="skip-link" href="#main-content">{locale === "en" ? "Skip to content" : "跳转到主要内容"}</a>
       <header className="site-masthead">
-        <a className="site-identity" href="/">
+        <Link className="site-identity" href="/">
           <span className="site-monogram" aria-hidden="true">G</span>
           <span><strong>{locale === "en" ? "Knowledge Base" : "知识库"}</strong><small>{locale === "en" ? "Research · Documents · Evidence" : "研究 · 资料 · 证据"}</small></span>
-        </a>
+        </Link>
         <nav className="site-navigation" aria-label={locale === "en" ? "Site navigation" : "网站导航"}>
-          <a href="/">{locale === "en" ? "Workspace" : "工作台"}</a>
-          <a href="/account">{locale === "en" ? "Account" : "用户中心"}</a>
+          <Link href="/" aria-current={pathname === "/" ? "page" : undefined}>{locale === "en" ? "Workspace" : "工作台"}</Link>
+          <Link href="/account" aria-current={pathname === "/account" ? "page" : undefined}>{locale === "en" ? "Account" : "用户中心"}</Link>
           <button className="language-switch" type="button" disabled={saving} onClick={() => { void changeLocale(locale === "zh-CN" ? "en" : "zh-CN").catch(() => {}); }} aria-label={locale === "en" ? "Change language" : "切换语言"}>
-            {locale === "en" ? "Language: English" : "语言：中文"}<span aria-hidden="true"> ⇄</span>
+            {saving ? (locale === "en" ? "Saving…" : "保存中…") : (locale === "en" ? "English" : "中文")}<span aria-hidden="true"> ⇄</span>
           </button>
         </nav>
       </header>

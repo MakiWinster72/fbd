@@ -259,8 +259,16 @@ export function getMineruStatus(): Promise<{ reachable: boolean }> {
   return apiRequest("/api/v1/admin/mineru-status");
 }
 
-export function listAdminKnowledgeBases(): Promise<KnowledgeBase[]> {
-  return apiRequest("/api/v1/admin/knowledge-bases");
+export function createKnowledgeBase(input: { id: string; name: string; description: string }): Promise<KnowledgeBase> {
+  return apiRequest("/api/v1/admin/knowledge-bases", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function deleteKnowledgeBase(id: string, confirmation: string): Promise<void> {
+  return apiRequest(`/api/v1/admin/knowledge-bases/${encodeURIComponent(id)}`, { method: "DELETE", body: JSON.stringify({ confirmation }) });
+}
+
+export function listAdminKnowledgeBases(includePendingDeletion = false): Promise<KnowledgeBase[]> {
+  return apiRequest(`/api/v1/admin/knowledge-bases${includePendingDeletion ? "?include_pending_deletion=true" : ""}`);
 }
 
 export function createAdminUser(input: { username: string; display_name: string; password: string; role: "admin" | "user"; knowledge_base_ids: string[] }): Promise<AdminUser> {

@@ -1,6 +1,7 @@
 "use client";
 
 import { DragEvent, useEffect, useRef, useState } from "react";
+import { AdminNav } from "@/components/admin-nav";
 import { useLanguage } from "@/components/language-provider";
 import { deleteIndexedDocument, discardFailedUpload, getCurrentUser, getDocumentImport, getIndexedDocument, getMineruStatus, listAdminKnowledgeBases, listDocumentImports, listIndexedDocuments, listModelProfiles, reindexIndexedDocument, retryDocumentImport, uploadDocument, type DocumentImportJob, type IndexedDocument, type IndexedDocumentDetail, type KnowledgeBase, type ModelProfile } from "@/lib/api";
 
@@ -226,18 +227,18 @@ export default function AdminDocumentsPage() {
     return jobFilter === "all" || job.status === jobFilter;
   });
 
-  if (!ready) return <main className="auth-status"><span className="auth-spinner" /><p>{t(error || "正在验证管理员权限…")}</p></main>;
+  if (!ready) return <main id="main-content" tabIndex={-1} className="auth-status"><span className="auth-spinner" /><p>{t(error || "正在验证管理员权限…")}</p></main>;
 
   return (
-    <main className="admin-shell document-intake-shell">
+    <main id="main-content" tabIndex={-1} className="admin-shell document-intake-shell">
       <header className="admin-header">
         <div>
           <p className="section-kicker">{t("资料入库")}</p>
           <h1>{t("文件导入")}</h1>
           <p>{t("先核对文件、解析方式和目标知识库，再交给后台完成解析与向量化。")}</p>
         </div>
-        <nav><a href="/">{t("返回知识库")}</a><a href="/admin/users">{t("用户管理")}</a><a href="/admin/models">{t("模型配置")}</a></nav>
       </header>
+      <AdminNav />
 
       {error ? <p className="admin-error" role="alert">{t(error)}</p> : null}
       <p className={`intake-service-status ${mineruStatus}`} role="status">{t("MinerU 服务")}：{t(mineruStatus === "checking" ? "正在检查…" : mineruStatus === "reachable" ? "端口可连接（不代表解析任务已成功）" : "无法连接；PDF 需启动服务或选择纯文本层模式。")}</p>

@@ -4,6 +4,7 @@ import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { askKnowledgeBase, fetchHealth, logout, type CurrentUser, type KnowledgeBase, type Source } from "@/lib/api";
 import { useLanguage } from "@/components/language-provider";
 import { useConversationHistory } from "@/components/use-conversation-history";
+import { Modal } from "@/components/modal";
 
 type Message = {
   id: string;
@@ -30,8 +31,12 @@ const QUICK_QUESTIONS = [
 
 function pageLabel(source: Source) {
   return source.page_start === source.page_end
-    ? `PAGE ${String(source.page_start).padStart(2, "0")}`
-    : `PAGE ${String(source.page_start).padStart(2, "0")}—${String(source.page_end).padStart(2, "0")}`;
+    ? String(source.page_start).padStart(2, "0")
+    : `${String(source.page_start).padStart(2, "0")}—${String(source.page_end).padStart(2, "0")}`;
+}
+
+function scrollBehavior(): ScrollBehavior {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 }
 
 function InlineText({
@@ -105,16 +110,21 @@ function SourceCards({
     <article
       className={`source-card${activeCitation === source.index ? " active" : ""}`}
       id={`${idPrefix}-${source.index}`}
+      tabIndex={-1}
       key={`${idPrefix}-${source.document_id}-${source.index}`}
     >
       <div className="source-index">{String(source.index).padStart(2, "0")}</div>
       <div className="source-card-body">
         <div className="source-meta">
-          <span>{pageLabel(source)}</span>
-          <span>{source.rerank_score !== null ? `${Math.round(source.rerank_score * 100)}% RERANK · ${Math.round(source.vector_score * 100)}% VECTOR` : `${Math.round(source.score * 100)}% MATCH`}</span>
+          <span>{t("页码")} {pageLabel(source)}</span>
+          <span>{source.rerank_score !== null ? `${t("重排序得分")} ${source.rerank_score.toFixed(2)}` : `${t("向量得分")} ${source.vector_score.toFixed(2)}`}</span>
         </div>
         <h3>{source.document_name}</h3>
         {source.section_title ? <p className="source-section">{source.section_title}</p> : null}
+        <details className="source-passage">
+          <summary>{t("查看完整引用片段")}</summary>
+          <p className="source-full-excerpt">{source.excerpt}</p>
+        </details>
         <p className="source-excerpt">{source.excerpt}</p>
         <div className="confidence-track" aria-label={`${t("相似度")} ${Math.round(source.score * 100)}%`}>
           <span style={{ width: `${Math.max(0, Math.min(100, source.score * 100))}%` }} />
@@ -135,12 +145,16 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
   const [mobileEvidenceOpen, setMobileEvidenceOpen] = useState(false);
   const [activeCitation, setActiveCitation] = useState<number | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const questionRef = useRef<HTMLTextAreaElement>(null);
+  const followTranscript = useRef(true);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const history = useConversationHistory(currentUser.id, knowledgeBases, loading);
   const selectedKnowledgeBaseId = history.knowledgeBaseId;
   const busy = loading || history.restoring;
 
   useEffect(() => {
     const detail = history.replay.detail;
+    followTranscript.current = true;
     setMessages([INITIAL_MESSAGE, ...(detail?.turns.flatMap((turn): Message[] => [
       { id: `turn-${turn.id}-user`, role: "user", content: turn.question },
       { id: `turn-${turn.id}-assistant`, role: "assistant", content: turn.answer, sources: turn.sources, grounded: turn.grounded },
@@ -159,24 +173,15 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
   }, []);
 
   useEffect(() => {
-    transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" });
+    if (followTranscript.current) transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: history.restoring ? "auto" : scrollBehavior() });
   }, [messages, loading]);
 
   useEffect(() => {
     if (!mobileEvidenceOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setMobileEvidenceOpen(false);
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
       document.getElementById(`mobile-source-${activeCitation ?? 1}`)?.scrollIntoView({ block: "nearest" });
     });
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
+    return () => cancelAnimationFrame(frame);
   }, [mobileEvidenceOpen, activeCitation]);
 
   function openCitation(index: number, sources: Source[]) {
@@ -186,7 +191,11 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
       setMobileEvidenceOpen(true);
       return;
     }
-    requestAnimationFrame(() => document.getElementById(`source-${index}`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    requestAnimationFrame(() => {
+      const source = document.getElementById(`source-${index}`);
+      source?.focus({ preventScroll: true });
+      source?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });
+    });
   }
 
   function changeKnowledgeBase(knowledgeBaseId: string) {
@@ -203,6 +212,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
       role: "user",
       content: value,
     };
+    followTranscript.current = true;
     setQuestion("");
     setError(null);
     setMessages((current) => [...current, userMessage]);
@@ -238,7 +248,8 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (event.key === "Enter" && !event.shiftKey && !window.matchMedia("(pointer: coarse)").matches) {
       event.preventDefault();
       void submitQuestion();
     }
@@ -252,7 +263,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
   }[serviceState]);
 
   return (
-    <main className="workspace-shell">
+    <main id="main-content" tabIndex={-1} className="workspace-shell">
       <header className="topbar">
         <div className="brand-block">
           <div className="brand-seal" aria-hidden="true">G</div>
@@ -323,15 +334,20 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
                 {history.items.map((item) => <option key={item.id} value={item.id}>{item.title} · {item.turn_count} {t("轮问答")}</option>)}
               </select>
               <button type="button" disabled={busy} onClick={history.startNew}>{t("新建会话")}</button>
-              <button type="button" disabled={busy || !history.active} onClick={() => { if (window.confirm(t("删除此会话及全部消息？此操作无法撤销。"))) void history.remove(); }}>{t("删除会话")}</button>
-              <button type="button" disabled={busy || history.listing} onClick={history.refresh}>{t("刷新列表")}</button>
-              {history.hasMore ? <button type="button" disabled={busy || history.listing} onClick={() => void history.loadMore()}>{t("加载更多")}</button> : null}
-              <p>{t("会话仅对当前账号可见；历史答案及引用保留生成时的内容，本轮仍独立检索。")}</p>
+              <details className="history-more">
+                <summary>{t("管理会话")}</summary>
+                <div className="history-actions">
+                  <button type="button" disabled={busy || history.listing} onClick={history.refresh}>{t(history.listing ? "加载中…" : "刷新列表")}</button>
+                  {history.hasMore ? <button type="button" disabled={busy || history.listing} onClick={() => void history.loadMore()}>{t("加载更多")}</button> : null}
+                  <button className="danger-action" type="button" disabled={busy || !history.active} onClick={() => setConfirmDelete(true)}>{t("删除会话")}</button>
+                  <p>{t("会话仅对当前账号可见；历史答案及引用保留生成时的内容，本轮仍独立检索。")}</p>
+                </div>
+              </details>
               {history.error ? <p className="history-error" role="alert">{t(history.error)}</p> : null}
             </section>
           ) : null}
 
-          <div className="transcript" ref={transcriptRef} aria-live="polite">
+          <div className="transcript" ref={transcriptRef} role="log" aria-label={t("知识库对话")} tabIndex={0} aria-busy={busy} onScroll={(event) => { const node = event.currentTarget; followTranscript.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80; }}>
             {messages.map((message) => (
               <article className={`message ${message.role}`} key={message.id}>
                 <div className="message-label">
@@ -346,7 +362,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
                   {message.role === "assistant" && message.sources?.length ? (
                     <div className="message-evidence-line">
                       <span>{message.sources.length} {t("条证据")}</span>
-                      <span>{t("已核对文件与页码")}</span>
+                      <span>{t("点击编号查看原文片段")}</span>
                     </div>
                   ) : null}
                 </div>
@@ -381,16 +397,16 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
               </button>
             ) : null}
             {messages.length === 1 ? (
-              <div className="quick-questions" aria-label={t("示例问题")}>
+              <div className="quick-questions" role="group" aria-label={t("示例问题")}>
                 {QUICK_QUESTIONS.map((item) => (
-                  <button type="button" key={item} onClick={() => void submitQuestion(t(item))}>{t(item)}</button>
+                  <button type="button" key={item} disabled={busy} onClick={() => { setQuestion(t(item)); questionRef.current?.focus(); }}>{t(item)}</button>
                 ))}
               </div>
             ) : null}
             {error ? (
               <div className="error-banner" role="alert">
                 <strong>{t("本次请求未完成")}</strong>
-                <span>{t(error)}。{t("请检查管理后台当前启用的对话模型协议、接口地址及连接测试结果；重排序失败会自动降级，不会阻止回答。")}</span>
+                <span>{t(error)} · {t("问题已保留，可稍后重试。持续失败请联系管理员。")}</span>
               </div>
             ) : null}
             <form className="composer" onSubmit={onSubmit}>
@@ -398,6 +414,8 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
               <div className="composer-row">
                 <textarea
                   id="question"
+                  ref={questionRef}
+                  aria-describedby="composer-hint"
                   value={question}
                   onChange={(event) => setQuestion(event.target.value)}
                   onKeyDown={onKeyDown}
@@ -411,7 +429,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
                 </button>
               </div>
-              <p className="composer-hint">{t("Enter 发送 · Shift + Enter 换行")}</p>
+              <div className="composer-footer"><p className="composer-hint" id="composer-hint"><span className="desktop-input-hint">{t("Enter 发送 · Shift + Enter 换行")}</span><span className="touch-input-hint">{t("点击按钮发送 · 回车换行")}</span></p><span className="character-count">{question.length} / 2000</span></div>
             </form>
           </div>
         </section>
@@ -445,21 +463,14 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
       </section>
 
       {mobileEvidenceOpen ? (
-        <div className="mobile-evidence-backdrop" onClick={() => setMobileEvidenceOpen(false)}>
-          <section
-            className="mobile-evidence-sheet"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("引用来源")}
-            onClick={(event) => event.stopPropagation()}
-          >
+        <Modal className="mobile-evidence-sheet" label={t("引用来源")} onClose={() => setMobileEvidenceOpen(false)}>
             <div className="mobile-sheet-handle" aria-hidden="true" />
             <header className="mobile-sheet-header">
               <div>
                 <p className="section-kicker">{t("引用证据")}</p>
                 <h2>{t("引用来源")} · {String(latestSources.length).padStart(2, "0")}</h2>
               </div>
-              <button type="button" onClick={() => setMobileEvidenceOpen(false)} aria-label={t("关闭引用来源")}>{t("关闭")}</button>
+              <button type="button" autoFocus onClick={() => setMobileEvidenceOpen(false)} aria-label={t("关闭引用来源")}>{t("关闭")}</button>
             </header>
             <div className="mobile-sheet-list">
               <SourceCards sources={latestSources} idPrefix="mobile-source" activeCitation={activeCitation} />
@@ -468,9 +479,12 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
               <span aria-hidden="true">※</span>
               <p>{t("金额、人名和设备型号等关键信息应结合原始页面复核。")}</p>
             </div>
-          </section>
-        </div>
+        </Modal>
       ) : null}
+      {confirmDelete ? <Modal label={t("删除会话")} onClose={() => setConfirmDelete(false)}>
+        <div className="confirmation-body"><p className="section-kicker">{t("会话管理")}</p><h2>{t("删除会话")}</h2><p>{t("删除此会话及全部消息？此操作无法撤销。")}</p></div>
+        <div className="modal-actions"><button type="button" autoFocus onClick={() => setConfirmDelete(false)}>{t("取消")}</button><button type="button" className="danger-action" disabled={busy} onClick={() => { setConfirmDelete(false); void history.remove(); }}>{t("确认删除")}</button></div>
+      </Modal> : null}
     </main>
   );
 }

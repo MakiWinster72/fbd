@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { AdminNav } from "@/components/admin-nav";
 import { useLanguage } from "@/components/language-provider";
 import {
   activateChatProfile,
@@ -196,19 +197,20 @@ export default function AdminModelsPage() {
     }
   }
 
-  if (!ready) return <main className="auth-status"><span className="auth-spinner" /><p>{t(error || "正在验证管理员权限…")}</p></main>;
+  if (!ready) return <main id="main-content" tabIndex={-1} className="auth-status"><span className="auth-spinner" /><p>{t(error || "正在验证管理员权限…")}</p></main>;
 
   return (
-    <main className="admin-shell">
+    <main id="main-content" tabIndex={-1} className="admin-shell">
       <header className="admin-header">
         <div><p className="section-kicker">{t("管理工作台")}</p><h1>{t("模型配置中心")}</h1><p>{t("模型密钥仅保存在后端，普通用户无法查看或选择模型。")}</p></div>
-        <nav><a href="/">{t("返回知识库")}</a><a href="/admin/documents">{t("文件导入")}</a><a href="/admin/users">{t("用户管理")}</a><button type="button" onClick={() => setShowCreate((value) => !value)}>{t(showCreate ? "取消新增" : "新增模型配置")}</button></nav>
+        <button className="primary-action" type="button" aria-expanded={showCreate} aria-controls="create-model" onClick={() => setShowCreate((value) => !value)}>{t(showCreate ? "取消新增" : "新增模型配置")}</button>
       </header>
+      <AdminNav />
 
       {error ? <p className="admin-error" role="alert">{t(error)}</p> : null}
       {job ? (
         <section className={`index-job ${job.status}`}>
-          <div><span>EMBEDDING INDEX</span><strong>{t(job.status === "completed" ? "新索引已启用" : job.status === "failed" ? "索引构建失败" : "正在构建新索引")}</strong></div>
+          <div><span>{t("向量索引")}</span><strong>{t(job.status === "completed" ? "新索引已启用" : job.status === "failed" ? "索引构建失败" : "正在构建新索引")}</strong></div>
           <p>{job.completed_chunks} / {job.total_chunks || "?"} {t("个文本块")}</p>
           {job.total_chunks ? <div className="job-progress"><span style={{ width: `${job.completed_chunks / job.total_chunks * 100}%` }} /></div> : null}
           {job.error ? <p className="form-error">{job.error}</p> : null}
@@ -216,7 +218,7 @@ export default function AdminModelsPage() {
       ) : null}
 
       {showCreate ? (
-        <form className="create-profile-form" onSubmit={createProfile}>
+        <form id="create-model" className="create-profile-form" onSubmit={createProfile}>
           <div><p className="section-kicker">{t("新增配置")}</p><h2>{t("新增模型配置")}</h2></div>
           <label><span>{t("用途")}</span><select value={form.purpose} onChange={(event) => {
             const purpose = event.target.value as "chat" | "embedding" | "reranker";

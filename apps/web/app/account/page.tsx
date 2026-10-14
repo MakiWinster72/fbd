@@ -13,7 +13,7 @@ export default function AccountPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"name" | "password" | null>(null);
   const [notice, setNotice] = useState("");
   const en = locale === "en";
   useEffect(() => {
@@ -22,52 +22,70 @@ export default function AccountPage() {
       else { setUser(current); setName(current.display_name); }
     }).catch(() => setError("load"));
   }, []);
-  return <main className="account-page">
+  const errors: Record<string, string> = {
+    load: en ? "Could not load account. Please reload and try again." : "无法加载账号，请刷新后重试。",
+    name: en ? "Could not save display name" : "显示名称保存失败",
+    mismatch: en ? "Passwords do not match" : "两次新密码不一致",
+    password: en ? "Password change failed. Check your current password and use a different new password." : "修改失败，请检查当前密码，并使用不同的新密码。",
+  };
+  return <main id="main-content" tabIndex={-1} className="account-page">
     <header className="account-header">
-      <div><p className="section-kicker">{en ? "ACCOUNT SETTINGS" : "账号设置"}</p><h1>{en ? "User center" : "用户中心"}</h1></div>
-      <a href="/">{en ? "← Back to workspace" : "← 返回工作台"}</a>
+      <div><p className="section-kicker">{en ? "ACCOUNT SETTINGS" : "账号设置"}</p><h1>{en ? "User center" : "用户中心"}</h1><p>{en ? "Your identity, preferences and sign-in security." : "管理个人资料、显示偏好与登录安全。"}</p></div>
+      {user ? <span className="account-role">{user.role === "admin" ? (en ? "Administrator" : "管理员") : (en ? "Member" : "普通用户")}</span> : null}
     </header>
-    {error ? <p role="alert">{({ load: en ? "Could not load account" : "无法加载账号", name: en ? "Could not save display name" : "显示名称保存失败", mismatch: en ? "Passwords do not match" : "两次新密码不一致", password: en ? "Password change failed. Check your current password and use a different new password." : "修改失败，请检查当前密码，并使用不同的新密码。" } as Record<string, string>)[error]}</p> : null}
-    {user ? <>
-      <dl><dt>{en ? "Display name" : "显示名称"}</dt><dd>{user.display_name}</dd><dt>{en ? "Username" : "用户名"}</dt><dd>{user.username}</dd></dl>
-      <form onSubmit={async (event) => {
-        event.preventDefault(); setBusy(true); setError(""); setNotice("");
-        try { setUser(await updateAccountProfile(name)); setNotice("name-saved"); }
-        catch { setError("name"); }
-        finally { setBusy(false); }
-      }}>
-        <label htmlFor="display-name">{en ? "Display name" : "显示名称"}</label>
-        <input id="display-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={100} />
-        <button disabled={busy} type="submit">{en ? "Save name" : "保存名称"}</button>
-      </form>
-      <p role="status">{notice ? (en ? "Display name saved" : "显示名称已保存") : ""}</p>
-      <h2>{en ? "Change password" : "修改密码"}</h2>
-      <p>{en ? "All sessions will be signed out after the password is changed." : "修改成功后将注销所有登录会话，请重新登录。"}</p>
-      <form onSubmit={async (event) => {
-        event.preventDefault(); setError("");
-        if (newPassword !== confirmation) { setError("mismatch"); return; }
-        setBusy(true);
-        try { await changeAccountPassword(currentPassword, newPassword); window.location.assign("/login"); }
-        catch { setError("password"); }
-        finally { setBusy(false); }
-      }}>
-        <label htmlFor="current-password">{en ? "Current password" : "当前密码"}</label>
-        <input id="current-password" type="password" autoComplete="current-password" required maxLength={128} value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
-        <label htmlFor="new-password">{en ? "New password (8–128 characters)" : "新密码（8–128 个字符）"}</label>
-        <input id="new-password" type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
-        <label htmlFor="confirm-password">{en ? "Confirm new password" : "确认新密码"}</label>
-        <input id="confirm-password" type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
-        <button disabled={busy} type="submit">{en ? "Change password and sign out" : "修改密码并退出"}</button>
-      </form>
-      <h2>{en ? "Display language" : "显示语言"}</h2>
-      <p>{en ? "Saved to your account and applied when you sign in on another browser." : "保存到账号，换浏览器登录也会生效。"}</p>
-      <label htmlFor="account-language">{en ? "Language" : "语言"}</label>{" "}
-      <select id="account-language" value={locale} disabled={saving} onChange={(event) => {
-        const next = event.target.value === "en" ? "en" : "zh-CN";
-        setSaved(false);
-        void changeLocale(next).then(() => setSaved(true)).catch(() => {});
-      }}><option value="zh-CN">{en ? "Simplified Chinese" : "简体中文"}</option><option value="en">{en ? "English" : "英语"}</option></select>
-      <p role="status">{saving ? (en ? "Saving…" : "保存中…") : saved ? (en ? "Saved" : "已保存") : ""}</p>
-    </> : <p>{en ? "Loading…" : "加载中…"}</p>}
+    {error === "load" ? <p className="form-error" role="alert">{errors.load}</p> : null}
+    {user ? <div className="account-sections">
+      <section className="account-section" aria-labelledby="profile-title">
+        <div className="account-section-heading"><span className="section-number" aria-hidden="true">01</span><h2 id="profile-title">{en ? "Personal profile" : "个人资料"}</h2><p>{en ? "Choose how your name appears in the workspace." : "设置你在工作台中显示的名称。"}</p></div>
+        <div className="account-section-content">
+          <dl><dt>{en ? "Username" : "用户名"}</dt><dd>{user.username}</dd></dl>
+          <form aria-busy={busy === "name"} onSubmit={async (event) => {
+            event.preventDefault(); if (busy) return; setBusy("name"); setError(""); setNotice("");
+            try { const updated = await updateAccountProfile(name.trim()); setUser(updated); setName(updated.display_name); setNotice("name-saved"); }
+            catch { setError("name"); }
+            finally { setBusy(null); }
+          }}>
+            <label htmlFor="display-name">{en ? "Display name" : "显示名称"}</label>
+            <input id="display-name" autoComplete="nickname" value={name} onChange={(event) => { setName(event.target.value); setNotice(""); }} required maxLength={100} disabled={Boolean(busy)} />
+            {error === "name" ? <p className="form-error" role="alert">{errors.name}</p> : null}
+            <div className="account-form-footer"><button disabled={Boolean(busy) || !name.trim() || name.trim() === user.display_name} type="submit">{busy === "name" ? (en ? "Saving…" : "保存中…") : (en ? "Save name" : "保存名称")}</button><p role="status">{notice ? (en ? "Display name saved" : "显示名称已保存") : ""}</p></div>
+          </form>
+        </div>
+      </section>
+      <section className="account-section" aria-labelledby="language-title">
+        <div className="account-section-heading"><span className="section-number" aria-hidden="true">02</span><h2 id="language-title">{en ? "Display language" : "显示语言"}</h2><p>{en ? "Saved to your account, across browsers." : "保存到账号，换浏览器登录也会生效。"}</p></div>
+        <div className="account-section-content language-preference">
+          <label htmlFor="account-language">{en ? "Language" : "语言"}</label>
+          <select id="account-language" value={locale} disabled={saving} onChange={(event) => {
+            const next = event.target.value === "en" ? "en" : "zh-CN";
+            setSaved(false);
+            void changeLocale(next).then(() => setSaved(true)).catch(() => {});
+          }}><option value="zh-CN">{en ? "Simplified Chinese" : "简体中文"}</option><option value="en">{en ? "English" : "英语"}</option></select>
+          <p role="status">{saving ? (en ? "Saving…" : "保存中…") : saved ? (en ? "Saved" : "已保存") : (en ? "Changes are saved automatically." : "切换后自动保存。")}</p>
+        </div>
+      </section>
+      <section className="account-section" aria-labelledby="security-title">
+        <div className="account-section-heading"><span className="section-number" aria-hidden="true">03</span><h2 id="security-title">{en ? "Sign-in security" : "登录安全"}</h2><p>{en ? "All sessions will be signed out after the password is changed." : "修改成功后将注销所有登录会话，请重新登录。"}</p></div>
+        <div className="account-section-content">
+          <form aria-busy={busy === "password"} onSubmit={async (event) => {
+            event.preventDefault(); if (busy) return; setError("");
+            if (newPassword !== confirmation) { setError("mismatch"); return; }
+            setBusy("password");
+            try { await changeAccountPassword(currentPassword, newPassword); window.location.assign("/login"); }
+            catch { setError("password"); }
+            finally { setBusy(null); }
+          }}>
+            <label htmlFor="current-password">{en ? "Current password" : "当前密码"}</label>
+            <input id="current-password" type="password" autoComplete="current-password" required maxLength={128} value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} disabled={Boolean(busy)} />
+            <label htmlFor="new-password">{en ? "New password (8–128 characters)" : "新密码（8–128 个字符）"}</label>
+            <input id="new-password" type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} disabled={Boolean(busy)} />
+            <label htmlFor="confirm-password">{en ? "Confirm new password" : "确认新密码"}</label>
+            <input id="confirm-password" type="password" autoComplete="new-password" required minLength={8} maxLength={128} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} disabled={Boolean(busy)} aria-invalid={error === "mismatch"} aria-describedby={error === "mismatch" ? "password-error" : undefined} />
+            {error === "password" || error === "mismatch" ? <p id="password-error" className="form-error" role="alert">{errors[error]}</p> : null}
+            <button disabled={Boolean(busy)} type="submit">{busy === "password" ? (en ? "Updating…" : "正在修改…") : (en ? "Change password and sign out" : "修改密码并退出")}</button>
+          </form>
+        </div>
+      </section>
+    </div> : !error ? <p role="status">{en ? "Loading…" : "加载中…"}</p> : null}
   </main>;
 }

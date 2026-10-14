@@ -1,6 +1,13 @@
 export type Locale = "zh-CN" | "en";
 
 const english: Record<string, string> = {
+  "知识库管理": "Knowledge bases",
+  "管理导航": "Administration", "显示密码": "Show password", "隐藏密码": "Hide password",
+  "页码": "Page", "重排序得分": "Rerank score", "向量得分": "Vector score",
+  "查看完整引用片段": "Read full excerpt", "管理会话": "Manage conversations", "会话管理": "Conversation management",
+  "确认删除": "Confirm deletion", "点击编号查看原文片段": "Select a reference to read the excerpt",
+  "问题已保留，可稍后重试。持续失败请联系管理员。": "Your question is saved in the editor. Try again, or contact an administrator if the problem persists.",
+  "点击按钮发送 · 回车换行": "Tap Send · Return for a new line", "向量索引": "EMBEDDING INDEX",
   "让每个答案，都有据可查。": "Every answer. Backed by evidence.", "原始文件": "Original documents", "页码引用": "Page references", "访问授权": "Access control", "登录工作台": "Sign in to your workspace", "知识库工作台": "Knowledge workspace",
   "访问权限": "ACCESS REQUIRED",
   "私有知识工作台": "KNOWLEDGE RAG · PRIVATE ARCHIVE",
