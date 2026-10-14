@@ -4,13 +4,13 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import hashlib
 import json
 import time
 
 from sqlalchemy.orm import Session
-from knowledge_rag.db import DocumentLeaseRecord
+from knowledge_rag.db import DocumentLeaseRecord, UserKnowledgeBaseRecord
 from knowledge_rag.document_import import DOCUMENT_LEASE_SCOPE
 from knowledge_rag.documents import stable_id
 
@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from knowledge_rag.admin_store import AdminStore
 from knowledge_rag.api import create_app
 from knowledge_rag.config import Settings
-from knowledge_rag.rag import ChatResult
+from knowledge_rag.rag import ChatResult, RagService
 
 
 class FakeRagService:
@@ -45,7 +45,8 @@ class AdminApiTests(unittest.TestCase):
         self.admin = self.store.create_user("admin", "管理员", "strong-password", "admin")
         self.user = self.store.create_user("reader", "普通用户", "reader-password", "user")
         self.store.set_user_knowledge_bases(self.user.id, ["default"], self.admin.id)
-        self.client = TestClient(create_app(rag_service=FakeRagService(), settings=settings, admin_store=self.store))
+        self.app = create_app(rag_service=Mock(spec=RagService, wraps=FakeRagService()), settings=settings, admin_store=self.store)
+        self.client = TestClient(self.app)
 
     def tearDown(self) -> None:
         self.client.close()
@@ -63,6 +64,118 @@ class AdminApiTests(unittest.TestCase):
                     return
             time.sleep(0.01)
         self.fail("后台任务未释放文档租约")
+
+    def test_delete_knowledge_base_requires_confirmation_and_retains_history(self) -> None:
+        from sqlalchemy import select
+
+        from knowledge_rag.conversation_store import ConversationStore
+        from knowledge_rag.db import AuditLogRecord, KnowledgeBaseRecord
+
+        base = self.store.create_knowledge_base("delete-me", "待删除", "", self.admin.id)
+        self.store.set_user_knowledge_bases(self.user.id, [base.id], self.admin.id)
+        history = ConversationStore(self.store.engine)
+        conversation = history.create(self.user.id, base.id, "保留的历史")
+        endpoint = f"/api/v1/admin/knowledge-bases/{base.id}"
+        def request(text):
+            return self.client.request("DELETE", endpoint, json={"confirmation": text})
+        self.assertEqual(request("我确认删除(待删除)").status_code, 401)
+        self.login("reader", "reader-password")
+        self.assertEqual(request("我确认删除(待删除)").status_code, 403)
+        self.login("admin", "strong-password")
+        self.assertEqual(request("错误文字").status_code, 409)
+        self.assertTrue(self.store.user_can_access(self.user, base.id))
+        vector_store = Mock()
+        vector_store.collection = self.app.state.settings.milvus_collection
+        vector_store.vector_dim = 1024
+        vector_store.document_chunks.return_value = []
+        with patch("knowledge_rag.document_import.DocumentImportManager._milvus", return_value=vector_store):
+            response = request("我确认删除(待删除)")
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertFalse(self.store.user_can_access(self.user, base.id))
+        self.assertEqual(self.store.user_knowledge_base_ids(self.user.id), [])
+        self.assertEqual(history.get(self.user.id, conversation.id)[0].id, conversation.id)
+        with Session(self.store.engine) as session:
+            self.assertIsNotNone(session.get(KnowledgeBaseRecord, base.id))
+            self.assertIsNotNone(session.scalar(select(AuditLogRecord).where(AuditLogRecord.action == "knowledge_base.delete", AuditLogRecord.target_id == base.id)))
+        with self.assertRaises(PermissionError):
+            history.create(self.user.id, base.id, "不能继续")
+        original_grants = self.store.user_knowledge_base_ids(self.user.id)
+        with self.assertRaises(ValueError):
+            self.store.set_user_knowledge_bases(self.user.id, ["default", base.id], self.admin.id)
+        self.assertEqual(self.store.user_knowledge_base_ids(self.user.id), original_grants)
+        with Session(self.store.engine) as session:
+            self.assertIsNone(session.get(UserKnowledgeBaseRecord, (self.user.id, base.id)))
+            self.assertIsNone(session.get(UserKnowledgeBaseRecord, (self.user.id, "default")))
+
+    def test_delete_cleanup_failure_is_retryable_and_preserves_shared_cache(self) -> None:
+        from knowledge_rag.documents import stable_id
+
+        self.login("admin", "strong-password")
+        base = self.store.create_knowledge_base("cleanup-qa", "清理验收", "", self.admin.id)
+        with patch("knowledge_rag.document_import.DocumentImportManager._run", side_effect=lambda job, path, mode, lease: lease.close()):
+            response = self.client.post("/api/v1/admin/document-imports", data={"knowledge_base_id": base.id, "ocr_mode": "native"}, files={"file": ("cleanup.pdf", b"cleanup-qa-only")})
+        self.assertEqual(response.status_code, 202, response.text)
+        job_id = response.json()["id"]
+        document_id = stable_id("document", response.json()["file_hash"])
+        self.wait_for_no_lease(base.id, document_id)
+        manager = self.app.state.document_import_manager
+        manager.update(job_id, status="failed")
+        source = self.app.state.settings.data_dir / "uploads" / job_id / "cleanup.pdf"
+        normalized = self.app.state.settings.data_dir / "normalized" / document_id
+        normalized.mkdir(parents=True)
+        chunks = [{"knowledge_base_id": base.id, "document_id": document_id, "content": "目标资料"}, {"knowledge_base_id": "default", "document_id": document_id, "content": "其他库保留"}]
+        (normalized / "chunks.json").write_text(json.dumps(chunks))
+        (normalized / "chunks-with-vectors.json").write_text(json.dumps(chunks))
+        vector_store = Mock()
+        vector_store.collection = self.app.state.settings.milvus_collection
+        vector_store.vector_dim = 1024
+        vector_store.document_chunks.return_value = [{"document_id": document_id}]
+        vector_store.has_collection.return_value = True
+        vector_store.delete_document.side_effect = RuntimeError("simulated vector service outage")
+        endpoint = f"/api/v1/admin/knowledge-bases/{base.id}"
+        confirmation = {"confirmation": "我确认删除(清理验收)"}
+        with patch.object(manager, "_milvus", return_value=vector_store):
+            failed = self.client.request("DELETE", endpoint, json=confirmation)
+            self.assertEqual(failed.status_code, 503, failed.text)
+            self.assertTrue(source.exists())
+            self.assertFalse(self.store.user_can_access(self.admin, base.id))
+            pending = self.client.get("/api/v1/admin/knowledge-bases?include_pending_deletion=true").json()
+            self.assertIn(base.id, [item["id"] for item in pending])
+            original_grants = self.store.user_knowledge_base_ids(self.user.id)
+            with self.assertRaises(ValueError):
+                self.store.set_user_knowledge_bases(self.user.id, ["default", base.id], self.admin.id)
+            self.assertEqual(self.store.user_knowledge_base_ids(self.user.id), original_grants)
+            with Session(self.store.engine) as session:
+                self.assertIsNone(session.get(UserKnowledgeBaseRecord, (self.user.id, base.id)))
+                self.assertIsNotNone(session.get(UserKnowledgeBaseRecord, (self.user.id, "default")))
+            vector_store.delete_document.side_effect = None
+            deleted = self.client.request("DELETE", endpoint, json=confirmation)
+        self.assertEqual(deleted.status_code, 204, deleted.text)
+        self.assertFalse(source.exists())
+        self.assertEqual(json.loads((normalized / "chunks.json").read_text()), [chunks[1]])
+        self.assertEqual(json.loads((normalized / "chunks-with-vectors.json").read_text()), [chunks[1]])
+        self.assertEqual(manager.get(job_id).status, "deleted")
+        pending = self.client.get("/api/v1/admin/knowledge-bases?include_pending_deletion=true").json()
+        self.assertNotIn(base.id, [item["id"] for item in pending])
+
+    def test_create_knowledge_base(self) -> None:
+        endpoint = "/api/v1/admin/knowledge-bases"
+        payload = {"id": "research-2026", "name": "  科研资料  ", "description": "研究材料"}
+        self.assertEqual(self.client.post(endpoint, json=payload).status_code, 401)
+        self.login("reader", "reader-password")
+        self.assertEqual(self.client.post(endpoint, json=payload).status_code, 403)
+        self.login("admin", "strong-password")
+        response = self.client.post(endpoint, json=payload)
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(response.json()["name"], "科研资料")
+        self.assertTrue(response.json()["active"])
+        self.assertEqual(self.client.post(endpoint, json=payload).status_code, 409)
+        for invalid in [{**payload, "id": "../bad"}, {**payload, "name": "   "}, {**payload, "id": ""}]:
+            self.assertIn(self.client.post(endpoint, json=invalid).status_code, (400, 422))
+        self.login("reader", "reader-password")
+        self.assertNotIn("research-2026", [item["id"] for item in self.client.get("/api/v1/knowledge-bases").json()])
+        self.store.set_user_knowledge_bases(self.user.id, ["default", "research-2026"], self.admin.id)
+        self.assertIn("research-2026", [item["id"] for item in self.client.get("/api/v1/knowledge-bases").json()])
 
     def test_document_import_requires_admin_and_validates_upload(self) -> None:
         endpoint = "/api/v1/admin/document-imports"
@@ -84,7 +197,7 @@ class AdminApiTests(unittest.TestCase):
             self.assertEqual(duplicate.json()["id"], job_id)
             self.assertEqual(len(self.client.get(endpoint).json()), 1)
             from knowledge_rag.document_import import DocumentImportManager
-            DocumentImportManager(self.client.app.state.settings, self.store).update(job_id, status="completed")
+            DocumentImportManager(self.app.state.settings, self.store).update(job_id, status="completed")
             skipped = self.client.post(endpoint, data=payload, files={"file": ("a.pdf", b"data")})
             self.assertEqual(skipped.json()["id"], job_id)
             replaced = self.client.post(endpoint, data={**payload, "duplicate_mode": "replace"}, files={"file": ("a.pdf", b"data")})
@@ -99,19 +212,21 @@ class AdminApiTests(unittest.TestCase):
             first = self.client.post(endpoint, data={"knowledge_base_id": "default", "ocr_mode": "native"}, files={"file": ("fixture.pdf", b"original")})
             self.assertEqual(first.status_code, 202, first.text)
             job_id = first.json()["id"]
-            path = self.client.app.state.settings.data_dir / "uploads" / job_id / "fixture.pdf"
+            path = self.app.state.settings.data_dir / "uploads" / job_id / "fixture.pdf"
             self.assertEqual(path.read_bytes(), b"original")
             self.assertEqual(json.loads((path.parent / "options.json").read_text())["ocr_mode"], "native")
             collision = self.client.post(endpoint, data={"knowledge_base_id": "default", "duplicate_mode": "replace"}, files={"file": ("fixture.pdf", b"original")})
             self.assertEqual(collision.status_code, 409)
             self.assertEqual(path.read_bytes(), b"original")
-            manager = self.client.app.state.document_import_manager
+            manager = self.app.state.document_import_manager
             from knowledge_rag.document_import import DocumentImportManager
-            DocumentImportManager(self.client.app.state.settings, self.store)
+            DocumentImportManager(self.app.state.settings, self.store)
             self.assertEqual(manager.get(job_id).status, "queued")  # A live worker must not be invalidated.
             with Session(self.store.engine) as session, session.begin():
-                session.get(DocumentLeaseRecord, (DOCUMENT_LEASE_SCOPE, stable_id("document", first.json()["file_hash"]))).expires_at = "2000-01-01T00:00:00+00:00"
-            DocumentImportManager(self.client.app.state.settings, self.store)
+                expired = session.get(DocumentLeaseRecord, (DOCUMENT_LEASE_SCOPE, stable_id("document", first.json()["file_hash"])))
+                assert expired is not None
+                expired.expires_at = "2000-01-01T00:00:00+00:00"
+            DocumentImportManager(self.app.state.settings, self.store)
             self.assertEqual(manager.get(job_id).status, "failed")
             self.assertEqual(path.read_bytes(), b"original")
             retry = self.client.post(f"{endpoint}/{job_id}/retry")
@@ -126,10 +241,11 @@ class AdminApiTests(unittest.TestCase):
 
     def test_independent_managers_fence_competing_operations(self) -> None:
         from knowledge_rag.document_import import DocumentImportManager
-        other_store = AdminStore(self.client.app.state.settings.app_db_path, "test-only-secret")
-        first_manager = self.client.app.state.document_import_manager
-        second_manager = DocumentImportManager(self.client.app.state.settings, other_store)
-        staging = self.client.app.state.settings.data_dir / "uploads" / "staging-first"
+        other_store = AdminStore(self.app.state.settings.app_db_path, "test-only-secret")
+        first_manager = self.app.state.document_import_manager
+        self.store.create_knowledge_base("other", "其他知识库", "", self.admin.id)
+        second_manager = DocumentImportManager(self.app.state.settings, other_store)
+        staging = self.app.state.settings.data_dir / "uploads" / "staging-first"
         staging.mkdir(parents=True)
         (staging / "same.pdf").write_bytes(b"shared")
         with patch("knowledge_rag.document_import.DocumentImportManager._run") as worker:
@@ -138,11 +254,13 @@ class AdminApiTests(unittest.TestCase):
             deadline = time.monotonic() + 2
             while worker.call_args is None and time.monotonic() < deadline:
                 time.sleep(0.01)
-            self.assertIsNotNone(worker.call_args)
+            assert worker.call_args is not None
             old_lease = worker.call_args.args[-1]
-            DocumentImportManager(self.client.app.state.settings, other_store)
-            self.assertEqual(second_manager.get(job.id).status, "queued")
-            competing = self.client.app.state.settings.data_dir / "uploads" / "staging-second"
+            DocumentImportManager(self.app.state.settings, other_store)
+            current_job = second_manager.get(job.id)
+            assert current_job is not None
+            self.assertEqual(current_job.status, "queued")
+            competing = self.app.state.settings.data_dir / "uploads" / "staging-second"
             competing.mkdir(parents=True)
             (competing / "same.pdf").write_bytes(b"shared")
             with self.assertRaisesRegex(ValueError, "正在由其他任务处理"):
@@ -156,7 +274,9 @@ class AdminApiTests(unittest.TestCase):
             (competing / "same.pdf").unlink()
             competing.rmdir()
             with Session(other_store.engine) as session, session.begin():
-                session.get(DocumentLeaseRecord, (DOCUMENT_LEASE_SCOPE, stable_id("document", job.file_hash))).expires_at = "2000-01-01T00:00:00+00:00"
+                expired = session.get(DocumentLeaseRecord, (DOCUMENT_LEASE_SCOPE, stable_id("document", job.file_hash)))
+                assert expired is not None
+                expired.expires_at = "2000-01-01T00:00:00+00:00"
             self.assertEqual(next(item.status for item in second_manager.list() if item.id == job.id), "failed")
             self.assertEqual(first_manager.get(job.id).status, "failed")
             with self.assertRaisesRegex(RuntimeError, "租约已失效"):
@@ -166,7 +286,9 @@ class AdminApiTests(unittest.TestCase):
             self.assertEqual(retry.status, "queued")
             with self.assertRaisesRegex(RuntimeError, "租约已失效"):
                 old_lease.update_job(job.id, status="failed")
-            self.assertEqual(second_manager.get(job.id).status, "queued")
+            current_job = second_manager.get(job.id)
+            assert current_job is not None
+            self.assertEqual(current_job.status, "queued")
             with self.assertRaises(ValueError):
                 first_manager.retry(job.id)
         self.wait_for_no_lease("default", stable_id("document", job.file_hash))
@@ -185,14 +307,14 @@ class AdminApiTests(unittest.TestCase):
         job_id = response.json()["id"]
         doc_id = stable_id("document", response.json()["file_hash"])
         self.wait_for_no_lease("default", doc_id)
-        path = self.client.app.state.settings.data_dir / "uploads" / job_id / "failed.pdf"
+        path = self.app.state.settings.data_dir / "uploads" / job_id / "failed.pdf"
         self.assertEqual(self.client.post(f"{endpoint}/{job_id}/discard").status_code, 409)
-        manager = self.client.app.state.document_import_manager
+        manager = self.app.state.document_import_manager
         manager.update(job_id, status="failed", error="解析失败")
         self.assertTrue(self.client.get(f"{endpoint}/{job_id}").json()["source_available"])
-        other_store = AdminStore(self.client.app.state.settings.app_db_path, "test-only-secret")
+        other_store = AdminStore(self.app.state.settings.app_db_path, "test-only-secret")
         lease = try_acquire(other_store.engine, DOCUMENT_LEASE_SCOPE, doc_id)
-        self.assertIsNotNone(lease)
+        assert lease is not None
         try:
             self.assertEqual(self.client.post(f"{endpoint}/{job_id}/discard").status_code, 409)
             self.assertTrue(path.exists())
@@ -218,10 +340,10 @@ class AdminApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 202, response.text)
         job_id = response.json()["id"]
         self.wait_for_no_lease("default", stable_id("document", response.json()["file_hash"]))
-        path = self.client.app.state.settings.data_dir / "uploads" / job_id / "fixture.pdf"
+        path = self.app.state.settings.data_dir / "uploads" / job_id / "fixture.pdf"
         chunks = tuple(Chunk(str(index), "doc", "logical", "default", "fixture.pdf", 1, 1, "", index, "正文", "hash", ()) for index in range(9))
         document = ParsedDocument("doc", "logical", "fixture.pdf", response.json()["file_hash"], 1, (), ())
-        prepared = PreparedIngestion(document, chunks, self.client.app.state.settings.data_dir / "normalized" / "doc")
+        prepared = PreparedIngestion(document, chunks, self.app.state.settings.data_dir / "normalized" / "doc")
         class Embedder:
             def __init__(self):
                 self.calls = 0
@@ -249,7 +371,7 @@ class AdminApiTests(unittest.TestCase):
                 self.writes.clear()
         embedder = Embedder()
         milvus = Milvus()
-        manager = self.client.app.state.document_import_manager
+        manager = self.app.state.document_import_manager
         with patch("knowledge_rag.document_import.IngestionPipeline.prepare", return_value=prepared), patch("knowledge_rag.document_import.create_embedder", return_value=embedder), patch("knowledge_rag.document_import.MilvusChunkStore", return_value=milvus):
             manager._run(job_id, path, "native")
             self.assertEqual(manager.get(job_id).status, "failed")
@@ -287,9 +409,9 @@ class AdminApiTests(unittest.TestCase):
         job_id = response.json()["id"]
         doc_id = stable_id("document", response.json()["file_hash"])
         self.wait_for_no_lease("default", doc_id)
-        source = self.client.app.state.settings.data_dir / "uploads" / job_id / "crash.pdf"
+        source = self.app.state.settings.data_dir / "uploads" / job_id / "crash.pdf"
         chunk = Chunk("one", doc_id, "logical", "default", "crash.pdf", 1, 1, "", 0, "合成内容", "hash", ())
-        prepared = PreparedIngestion(ParsedDocument(doc_id, "logical", "crash.pdf", response.json()["file_hash"], 1, (), ()), (chunk,), self.client.app.state.settings.data_dir / "normalized" / doc_id)
+        prepared = PreparedIngestion(ParsedDocument(doc_id, "logical", "crash.pdf", response.json()["file_hash"], 1, (), ()), (chunk,), self.app.state.settings.data_dir / "normalized" / doc_id)
         class FakeMilvus:
             def __init__(self):
                 self.indexed = False
@@ -307,27 +429,28 @@ class AdminApiTests(unittest.TestCase):
         fake = FakeMilvus()
         embedder = type("Embedder", (), {"embed": lambda self, texts: [[0.1] * 4096 for _ in texts]})()
         with patch("knowledge_rag.document_import.IngestionPipeline.prepare", return_value=prepared), patch("knowledge_rag.document_import.create_embedder", return_value=embedder), patch("knowledge_rag.document_import.MilvusChunkStore", return_value=fake), patch("knowledge_rag.document_import.IngestionPipeline.save_prepared", side_effect=OSError("simulated disk failure")):
-            self.client.app.state.document_import_manager._run(job_id, source, "native")
-            self.assertEqual(self.client.app.state.document_import_manager.get(job_id).status, "failed")
-            intent = self.client.app.state.settings.data_dir / "index-intents" / f"{job_id}.json"
+            self.app.state.document_import_manager._run(job_id, source, "native")
+            self.assertEqual(self.app.state.document_import_manager.get(job_id).status, "failed")
+            intent = self.app.state.settings.data_dir / "index-intents" / f"{job_id}.json"
             self.assertTrue(intent.exists())
             self.assertTrue(fake.indexed)
             self.assertTrue(source.exists())
             self.assertEqual(self.client.post(f"/api/v1/admin/document-imports/{job_id}/retry").status_code, 409)
             self.assertIn("索引清理未完成", self.client.get(f"/api/v1/admin/document-imports/{job_id}").json()["error"])
             fake.cleanup_fails = False
-            restarted = DocumentImportManager(self.client.app.state.settings, self.store)
+            restarted = DocumentImportManager(self.app.state.settings, self.store)
             self.assertFalse(fake.indexed)
             self.assertFalse(intent.exists())
-            self.assertEqual(restarted.get(job_id).status, "failed")
-            self.assertEqual(restarted.get(job_id).error, "索引清理已完成，可重试")
+            repaired = restarted.get(job_id)
+            assert repaired is not None
+            self.assertEqual(repaired.status, "failed")
+            self.assertEqual(repaired.error, "索引清理已完成，可重试")
             self.assertTrue(source.exists())
 
     def test_stale_intent_cannot_delete_newer_completed_import(self) -> None:
         from knowledge_rag.db import DocumentImportRecord
-        from knowledge_rag.document_import import DocumentImportManager
+        from knowledge_rag.document_import import DocumentImportManager, now
         from knowledge_rag.index_commit import IndexIntent
-        from knowledge_rag.document_import import now
         digest = hashlib.sha256(b"newer success").hexdigest()
         old_id, new_id = "old-job", "new-job"
         stamp = now()
@@ -339,10 +462,10 @@ class AdminApiTests(unittest.TestCase):
                                              status="completed", total_chunks=1, completed_chunks=1, error="",
                                              created_at=stamp, updated_at=stamp))
         intent = IndexIntent(old_id, "default", stable_id("document", digest), "test_collection", False)
-        intent.persist(self.client.app.state.settings.data_dir)
+        intent.persist(self.app.state.settings.data_dir)
         with patch("knowledge_rag.document_import.MilvusChunkStore", side_effect=AssertionError("不能删除后来成功的索引")):
-            DocumentImportManager(self.client.app.state.settings, self.store)
-        self.assertFalse(intent.path(self.client.app.state.settings.data_dir).exists())
+            DocumentImportManager(self.app.state.settings, self.store)
+        self.assertFalse(intent.path(self.app.state.settings.data_dir).exists())
 
     def test_completed_status_failure_rolls_back_new_index_and_cache(self) -> None:
         from knowledge_rag.models import Chunk, ParsedDocument
@@ -354,8 +477,8 @@ class AdminApiTests(unittest.TestCase):
         job_id = response.json()["id"]
         doc_id = stable_id("document", response.json()["file_hash"])
         self.wait_for_no_lease("default", doc_id)
-        source = self.client.app.state.settings.data_dir / "uploads" / job_id / "status.pdf"
-        output = self.client.app.state.settings.data_dir / "normalized" / doc_id
+        source = self.app.state.settings.data_dir / "uploads" / job_id / "status.pdf"
+        output = self.app.state.settings.data_dir / "normalized" / doc_id
         prepared = PreparedIngestion(
             ParsedDocument(doc_id, "logical", "status.pdf", response.json()["file_hash"], 1, (), ()),
             (Chunk("one", doc_id, "logical", "default", "status.pdf", 1, 1, "", 0, "内容", "hash", ()),), output,
@@ -368,7 +491,7 @@ class AdminApiTests(unittest.TestCase):
             def delete_document(self, kb, document_id): self.indexed = False
         fake = FakeMilvus()
         embedder = type("Embedder", (), {"embed": lambda self, texts: [[0.1] * 4096 for _ in texts]})()
-        manager = self.client.app.state.document_import_manager
+        manager = self.app.state.document_import_manager
         normal_update = manager.update
         def fail_completed(id, **values):
             if values.get("status") == "completed":
@@ -380,13 +503,13 @@ class AdminApiTests(unittest.TestCase):
         self.assertFalse(fake.indexed)
         self.assertEqual(json.loads((output / "chunks.json").read_text()), [])
         self.assertTrue(source.exists())
-        self.assertFalse((self.client.app.state.settings.data_dir / "index-intents" / f"{job_id}.json").exists())
+        self.assertFalse((self.app.state.settings.data_dir / "index-intents" / f"{job_id}.json").exists())
 
     def test_document_management_is_admin_only_scoped_and_removes_cached_chunks(self) -> None:
         digest = hashlib.sha256(b"fixture").hexdigest()
         doc_id = stable_id("document", digest)
         rows = [{"document_id": doc_id, "document_name": "测试.pdf", "page_start": 1, "page_end": 1, "section_title": "首页", "content": "正文"}]
-        cache = self.client.app.state.settings.data_dir / "normalized" / doc_id
+        cache = self.app.state.settings.data_dir / "normalized" / doc_id
         cache.mkdir(parents=True)
         (cache / "document.json").write_text(json.dumps({"file_hash": digest}))
         (cache / "chunks.json").write_text(json.dumps([{"document_id": doc_id, "knowledge_base_id": "default", "content": "正文"}]))
@@ -416,7 +539,7 @@ class AdminApiTests(unittest.TestCase):
             self.wait_for_no_lease("default", doc_id)
             self.assertEqual(self.client.delete(f"{url}/{doc_id}", params={"knowledge_base_id": "default"}).status_code, 409)
             from knowledge_rag.document_import import DocumentImportManager
-            DocumentImportManager(self.client.app.state.settings, self.store).update(rebuild.json()["id"], status="completed")
+            DocumentImportManager(self.app.state.settings, self.store).update(rebuild.json()["id"], status="completed")
             self.assertEqual(self.client.delete(f"{url}/{doc_id}", params={"knowledge_base_id": "default"}).status_code, 204)
             self.assertEqual(milvus.deleted, ("default", doc_id))
             self.assertEqual(json.loads((cache / "chunks.json").read_text()), [])
@@ -425,7 +548,7 @@ class AdminApiTests(unittest.TestCase):
     def test_cached_chunks_survive_interrupted_atomic_replacement(self) -> None:
         from knowledge_rag.models import Chunk, ParsedDocument
         from knowledge_rag.pipeline import IngestionPipeline, PreparedIngestion
-        output = self.client.app.state.settings.data_dir / "normalized" / "stable"
+        output = self.app.state.settings.data_dir / "normalized" / "stable"
         document = ParsedDocument("stable", "logical", "stable.pdf", "hash", 1, (), ())
         def prepared(text: str) -> PreparedIngestion:
             chunk = Chunk("chunk", "stable", "logical", "default", "stable.pdf", 1, 1, "", 0, text, "hash", ())
@@ -438,16 +561,15 @@ class AdminApiTests(unittest.TestCase):
             if str(target).endswith("chunks.json"):
                 raise OSError("simulated power loss during cache promotion")
             return replace(source, target)
-        with patch("knowledge_rag.index_commit.os.replace", side_effect=fail_chunk_replace):
-            with self.assertRaises(OSError):
-                IngestionPipeline.save_prepared(prepared("新内容"))
+        with patch("knowledge_rag.index_commit.os.replace", side_effect=fail_chunk_replace), self.assertRaises(OSError):
+            IngestionPipeline.save_prepared(prepared("新内容"))
         self.assertEqual((output / "chunks.json").read_bytes(), old)
         self.assertEqual(list(output.glob(".chunks.json.*")), [])
 
     def test_cached_chunks_preserve_other_knowledge_bases(self) -> None:
         from knowledge_rag.models import Chunk, ParsedDocument
         from knowledge_rag.pipeline import IngestionPipeline, PreparedIngestion
-        output = self.client.app.state.settings.data_dir / "normalized" / "shared"
+        output = self.app.state.settings.data_dir / "normalized" / "shared"
         document = ParsedDocument("shared", "logical", "shared.pdf", "hash", 1, (), ())
         def prepared(kb: str) -> PreparedIngestion:
             chunk = Chunk(f"chunk-{kb}", "shared", "logical", kb, "shared.pdf", 1, 1, "", 0, "内容", "hash", ())
@@ -536,6 +658,7 @@ class AdminApiTests(unittest.TestCase):
         self.assertTrue(payload["has_api_key"])
         self.assertNotIn("api_key", payload)
         stored = self.store.get_profile(payload["id"])
+        assert stored is not None
         self.assertEqual(stored.api_key, "sk-secret-value")
         raw_database = Path(self.temp_dir.name, "app.db").read_bytes()
         self.assertNotIn(b"sk-secret-value", raw_database)

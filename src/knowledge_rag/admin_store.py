@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, exists, func, or_, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -327,9 +328,29 @@ class AdminStore:
             session.execute(delete(SessionRecord).where(SessionRecord.user_id == user_id))
             self._audit(session, actor_id, "user.password_reset", "user", user_id, {})
 
-    def list_knowledge_bases(self, user: User | None = None) -> list[KnowledgeBase]:
+    def create_knowledge_base(self, knowledge_base_id: str, name: str, description: str, actor_id: str) -> KnowledgeBase:
+        name = name.strip()
+        description = description.strip()
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", knowledge_base_id):
+            raise ValueError("知识库标识必须以字母或数字开头，只能包含字母、数字、下划线和连字符")
+        if not name or len(name) > 150 or len(description) > 2000:
+            raise ValueError("知识库名称须为 1–150 个字符，描述最多 2000 个字符")
+        with Session(self.engine) as session, session.begin():
+            now = _now()
+            row = KnowledgeBaseRecord(id=knowledge_base_id, name=name, description=description, active=True, created_at=now, updated_at=now)
+            session.add(row)
+            session.flush()
+            self._audit(session, actor_id, "knowledge_base.create", "knowledge_base", knowledge_base_id, {"name": name})
+            return self._knowledge_base(row)
+
+    def list_knowledge_bases(self, user: User | None = None, include_pending_deletion: bool = False) -> list[KnowledgeBase]:
         with Session(self.engine) as session:
-            statement = select(KnowledgeBaseRecord).where(KnowledgeBaseRecord.active.is_(True)).order_by(KnowledgeBaseRecord.name)
+            visible = KnowledgeBaseRecord.active.is_(True)
+            if include_pending_deletion and (user is None or user.role == "admin"):
+                pending = exists().where(AuditLogRecord.target_id == KnowledgeBaseRecord.id, AuditLogRecord.target_type == "knowledge_base", AuditLogRecord.action == "knowledge_base.deleting")
+                done = exists().where(AuditLogRecord.target_id == KnowledgeBaseRecord.id, AuditLogRecord.target_type == "knowledge_base", AuditLogRecord.action == "knowledge_base.delete")
+                visible = or_(visible, pending & ~done)
+            statement = select(KnowledgeBaseRecord).where(visible).order_by(KnowledgeBaseRecord.name)
             if user is not None and user.role != "admin":
                 statement = statement.join(
                     UserKnowledgeBaseRecord,
@@ -359,7 +380,14 @@ class AdminStore:
                 raise KeyError(user_id)
             if unique_ids:
                 existing = set(
-                    session.scalars(select(KnowledgeBaseRecord.id).where(KnowledgeBaseRecord.id.in_(unique_ids))).all()
+                    # SQLite is serialized by the user UPDATE above; row locks
+                    # also serialize grant creation with deactivation on PostgreSQL.
+                    session.scalars(
+                        select(KnowledgeBaseRecord.id)
+                        .where(KnowledgeBaseRecord.id.in_(unique_ids), KnowledgeBaseRecord.active.is_(True))
+                        .order_by(KnowledgeBaseRecord.id)
+                        .with_for_update()
+                    ).all()
                 )
                 missing = set(unique_ids) - existing
                 if missing:

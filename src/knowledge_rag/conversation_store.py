@@ -19,6 +19,7 @@ from knowledge_rag.conversation_context import (
     bounded_history,
 )
 from knowledge_rag.db import (
+    AuditLogRecord,
     ConversationRecord,
     ConversationTurnRecord,
     KnowledgeBaseRecord,
@@ -61,12 +62,13 @@ class ConversationStore:
             UserKnowledgeBaseRecord.user_id == user_id,
             UserKnowledgeBaseRecord.knowledge_base_id == ConversationRecord.knowledge_base_id,
         )
+        deleted = exists().where(AuditLogRecord.action == "knowledge_base.delete", AuditLogRecord.target_type == "knowledge_base", AuditLogRecord.target_id == ConversationRecord.knowledge_base_id)
         return select(ConversationRecord).join(UserRecord, UserRecord.id == ConversationRecord.user_id).join(
             KnowledgeBaseRecord, KnowledgeBaseRecord.id == ConversationRecord.knowledge_base_id,
         ).where(
             ConversationRecord.user_id == user_id,
-            UserRecord.active.is_(True), KnowledgeBaseRecord.active.is_(True),
-            or_(UserRecord.role == "admin", grant),
+            UserRecord.active.is_(True),
+            or_(deleted, KnowledgeBaseRecord.active.is_(True) & or_(UserRecord.role == "admin", grant)),
         )
 
     @staticmethod

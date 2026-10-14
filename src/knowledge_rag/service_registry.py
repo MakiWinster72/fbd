@@ -7,6 +7,10 @@ from typing import Any
 
 from knowledge_rag.admin_store import AdminStore, ModelProfile
 from knowledge_rag.config import Settings
+from knowledge_rag.knowledge_base_lifecycle import (
+    index_lifecycle_gate,
+    knowledge_base_gate,
+)
 from knowledge_rag.milvus_store import MilvusChunkStore
 from knowledge_rag.models import Chunk
 from knowledge_rag.providers import create_chat_model, create_embedder, create_reranker
@@ -76,6 +80,10 @@ class EmbeddingIndexManager:
         self._lock = threading.Lock()
 
     def start(self, profile_id: str, knowledge_base_id: str, actor_id: str) -> str:
+        with index_lifecycle_gate(self.store.engine), knowledge_base_gate(self.store.engine, knowledge_base_id):
+            return self._start(profile_id, knowledge_base_id, actor_id)
+
+    def _start(self, profile_id: str, knowledge_base_id: str, actor_id: str) -> str:
         profile = self.store.get_profile(profile_id)
         if profile is None or profile.purpose != "embedding" or not profile.enabled:
             raise ValueError("无效的 Embedding 模型配置")

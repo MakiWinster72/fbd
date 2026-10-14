@@ -187,6 +187,16 @@ class UserKnowledgeBasesRequest(BaseModel):
     knowledge_base_ids: list[KnowledgeBaseId] = Field(default_factory=list, max_length=100)
 
 
+class KnowledgeBaseDeleteRequest(BaseModel):
+    confirmation: str = Field(min_length=1, max_length=200)
+
+
+class KnowledgeBaseCreateRequest(BaseModel):
+    id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+    name: str = Field(min_length=1, max_length=150)
+    description: str = Field(default="", max_length=2000)
+
+
 class KnowledgeBaseResponse(BaseModel):
     id: str
     name: str
@@ -696,9 +706,35 @@ def create_app(
     async def mineru_status(_: User = Depends(require_admin)) -> dict[str, bool]:
         return {"reachable": await run_in_threadpool(_url_open, effective_settings.mineru_base_url)}
 
+    @app.post("/api/v1/admin/knowledge-bases", response_model=KnowledgeBaseResponse, status_code=201)
+    async def create_knowledge_base(payload: KnowledgeBaseCreateRequest, admin: User = Depends(require_admin)) -> KnowledgeBaseResponse:
+        from sqlalchemy.exc import IntegrityError
+
+        try:
+            item = await run_in_threadpool(store.create_knowledge_base, payload.id, payload.name, payload.description, admin.id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="知识库标识已存在") from exc
+        return KnowledgeBaseResponse(**asdict(item))
+
+    @app.delete("/api/v1/admin/knowledge-bases/{knowledge_base_id}", status_code=204)
+    async def delete_admin_knowledge_base(knowledge_base_id: KnowledgeBaseId, payload: KnowledgeBaseDeleteRequest, admin: User = Depends(require_admin)) -> Response:
+        from knowledge_rag.knowledge_base_lifecycle import delete_knowledge_base
+
+        try:
+            await run_in_threadpool(delete_knowledge_base, import_manager, knowledge_base_id, payload.confirmation, admin.id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="知识库不存在") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="清理未完成，知识库保持停用，可重试删除") from exc
+        return Response(status_code=204)
+
     @app.get("/api/v1/admin/knowledge-bases", response_model=list[KnowledgeBaseResponse])
-    async def list_admin_knowledge_bases(_: User = Depends(require_admin)) -> list[KnowledgeBaseResponse]:
-        return [KnowledgeBaseResponse(**asdict(item)) for item in await run_in_threadpool(store.list_knowledge_bases)]
+    async def list_admin_knowledge_bases(include_pending_deletion: bool = False, _: User = Depends(require_admin)) -> list[KnowledgeBaseResponse]:
+        return [KnowledgeBaseResponse(**asdict(item)) for item in await run_in_threadpool(store.list_knowledge_bases, include_pending_deletion=include_pending_deletion)]
 
     @app.get("/api/v1/admin/model-profiles", response_model=list[ModelProfileResponse])
     async def list_model_profiles(_: User = Depends(require_admin)) -> list[ModelProfileResponse]:

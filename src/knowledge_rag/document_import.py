@@ -20,6 +20,7 @@ from knowledge_rag.db import DocumentImportRecord
 from knowledge_rag.document_leases import DocumentLease, recover_expired, try_acquire
 from knowledge_rag.documents import sha256_file, stable_id
 from knowledge_rag.index_commit import IndexIntent, pending_intents
+from knowledge_rag.knowledge_base_lifecycle import knowledge_base_gate
 from knowledge_rag.milvus_store import MilvusChunkStore
 from knowledge_rag.pipeline import IngestionPipeline
 from knowledge_rag.providers import create_embedder
@@ -218,6 +219,10 @@ class DocumentImportManager:
             session.execute(update(DocumentImportRecord).where(DocumentImportRecord.id == job_id).values(**values, updated_at=now()))
 
     def start(self, path: Path, file_name: str, knowledge_base_id: str, ocr_mode: str, duplicate_mode: str) -> ImportJob:
+        with knowledge_base_gate(self.store.engine, knowledge_base_id):
+            return self._start(path, file_name, knowledge_base_id, ocr_mode, duplicate_mode)
+
+    def _start(self, path: Path, file_name: str, knowledge_base_id: str, ocr_mode: str, duplicate_mode: str) -> ImportJob:
         with self._lock:
             self.recover_index_intents()
             digest = sha256_file(path)
@@ -282,6 +287,13 @@ class DocumentImportManager:
             return result
 
     def retry(self, job_id: str) -> ImportJob:
+        job = self.get(job_id)
+        if job is None:
+            raise KeyError("导入任务不存在")
+        with knowledge_base_gate(self.store.engine, job.knowledge_base_id):
+            return self._retry(job_id)
+
+    def _retry(self, job_id: str) -> ImportJob:
         with self._lock:
             recover_expired(self.store.engine)
             self.recover_index_intents()
@@ -430,6 +442,10 @@ class DocumentImportManager:
             return [to_job(record, self.settings.data_dir) for record in records if stable_id("document", record.file_hash) == document_id]
 
     def reindex_document(self, knowledge_base_id: str, document_id: str) -> ImportJob:
+        with knowledge_base_gate(self.store.engine, knowledge_base_id):
+            return self._reindex_document(knowledge_base_id, document_id)
+
+    def _reindex_document(self, knowledge_base_id: str, document_id: str) -> ImportJob:
         with self._lock:
             lease = try_acquire(self.store.engine, DOCUMENT_LEASE_SCOPE, document_id)
             if lease is None:
