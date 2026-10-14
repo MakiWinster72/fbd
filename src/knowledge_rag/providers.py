@@ -3,8 +3,10 @@ from __future__ import annotations
 import ipaddress
 import json
 import math
+import re
 import urllib.error
 import urllib.request
+from contextlib import suppress
 from dataclasses import replace
 from typing import Any
 from urllib.parse import urlsplit
@@ -12,7 +14,6 @@ from urllib.parse import urlsplit
 from knowledge_rag.admin_store import ModelProfile
 from knowledge_rag.models import Chunk
 from knowledge_rag.ollama import OllamaChatModel, OllamaEmbedder
-
 
 _BLOCKED_HOSTS = {"169.254.169.254", "metadata.google.internal"}
 
@@ -58,7 +59,8 @@ class OpenAICompatibleClient:
         # Never route a local model service through HTTP(S)_PROXY.
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({})) if is_loopback else urllib.request.build_opener()
 
-    def _post(self, path: str, payload: dict[str, Any], timeout: int = 180) -> dict[str, Any]:
+    def _post(self, path: str, payload: dict[str, Any], timeout: int = 180) -> Any:
+        """Return decoded JSON; TEI endpoints may return a top-level array."""
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -226,14 +228,13 @@ class OllamaReranker(OpenAICompatibleClient):
         finally:
             # This workstation has 8 GB VRAM. Release the 5 GB reranker before chat generation.
             if self.options.get("unload_after", True):
-                try:
+                # Optional unloading must not mask the reranking result/error.
+                with suppress(Exception):
                     self._post(
                         "/api/generate",
                         {"model": self.model, "keep_alive": 0},
                         timeout=timeout,
                     )
-                except Exception:
-                    pass
         return scores
 
 
@@ -305,7 +306,13 @@ def create_embedder(profile: ModelProfile):
 def test_profile(profile: ModelProfile) -> dict[str, Any]:
     if profile.purpose == "chat":
         answer = create_chat_model(profile).complete("只回答 OK。", "连通性测试")
-        return {"ok": True, "sample": answer[:200]}
+        # Never display provider reasoning, including orphan closing tags.
+        answer = re.sub(r"<think\b[^>]*>.*?</think\s*>", "", answer, flags=re.IGNORECASE | re.DOTALL)
+        closing = list(re.finditer(r"</think\s*>", answer, flags=re.IGNORECASE))
+        if closing:
+            answer = answer[closing[-1].end():]
+        answer = re.split(r"<think\b[^>]*>", answer, maxsplit=1, flags=re.IGNORECASE)[0]
+        return {"ok": True, "sample": answer.strip()[:200]}
     if profile.purpose == "reranker":
         scores = create_reranker(profile).rerank(
             "项目预算是多少？",

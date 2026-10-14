@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
+from unittest.mock import Mock, patch
 
 from knowledge_rag.admin_store import ModelProfile
 from knowledge_rag.providers import JinaCompatibleReranker, OllamaReranker, TeiReranker, validate_profile_protocol
@@ -21,6 +23,22 @@ def profile(protocol: str) -> ModelProfile:
         created_at="now",
         updated_at="now",
     )
+
+
+class ChatConnectionTests(unittest.TestCase):
+    def test_connection_sample_does_not_expose_reasoning(self) -> None:
+        from knowledge_rag.providers import test_profile
+
+        chat = replace(profile("openai_compatible"), purpose="chat")
+        for raw, expected in [
+            ("OK</think>OK", "OK"),
+            ("<think>private thoughts</think>OK", "OK"),
+            ("private thoughts</THINK>OK", "OK"),
+            ("<think>unfinished thoughts", ""),
+            ("OK", "OK"),
+        ]:
+            with self.subTest(raw=raw), patch("knowledge_rag.providers.create_chat_model", return_value=Mock(complete=Mock(return_value=raw))):
+                self.assertEqual(test_profile(chat)["sample"], expected)
 
 
 class RerankerProviderTests(unittest.TestCase):
