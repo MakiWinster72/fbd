@@ -33,6 +33,10 @@ try {
     if (width <= 1000) assert.equal(probe(`getComputedStyle(document.querySelector('.workspace-nav-trigger')).position`),'fixed');
     results.push(state);
   }
+  ab('set','viewport','1280','900');
+  ab('wait','.workspace-sidebar .workspace-nav-history li button');
+  const row = probe(`(() => {const b=document.querySelector('.workspace-sidebar .workspace-nav-history li button');const rect=b.getBoundingClientRect();const parts=[...b.children].map(n=>n.getBoundingClientRect());return {height:rect.height,aligned:parts.every(r=>Math.abs((r.top+r.bottom)/2-(rect.top+rect.bottom)/2)<3)};})()`);
+  assert.ok(row.height <= 44 && row.aligned,'History icon, title and count must share one compact row');
   ab('set','viewport','360','800');
   ab('click','.workspace-nav-trigger');
   ab('wait','dialog[open]');
@@ -82,7 +86,10 @@ try {
   assert.equal(probe(`document.querySelectorAll('.workspace-sidebar .workspace-nav-admin').length`),0);
   assert.equal(probe(`document.querySelector('.workspace-sidebar nav').getAttribute('aria-label')`),'Workspace navigation');
   evaluate(`window.fetch = async () => new Response(JSON.stringify({detail:'QA blocked mutation'}), {status:503,headers:{'Content-Type':'application/json'}})`);
-  ab('click','.workspace-nav-account button');
+  ab('click','.workspace-sidebar .workspace-account-menu summary');
+  assert.equal(probe(`!!document.querySelector('.workspace-sidebar .workspace-account-menu[open]')`),true);
+  ab('screenshot',`${dir}/account-menu.png`);
+  ab('click','.workspace-sidebar .workspace-nav-account button');
   ab('wait','--fn', "!!document.querySelector('.workspace-nav-account [role=alert]')");
   assert.ok(probe(`document.querySelector('.workspace-nav-account [role=alert]').textContent`).includes('Sign-out failed'));
   console.log(JSON.stringify({passed:true,mode:process.argv[2]||'--all',results,drawerFocusAndEscape:true,artifacts:dir}));
