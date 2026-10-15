@@ -26,4 +26,36 @@ data/evaluation/
 data/validation/*/*
 !data/validation/README.md
 
+# Local agent runtime output (keep reusable project agent configuration trackable)
 .pi/tasks/
+.pi/delegate/
+.pi/subagents/
+.pi/fusion/
+.pi/fabric/
+
+# MinerU generated parsing output
+/data/mineru/
+
+# Local caches and test reports
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+.coverage.*
+htmlcov/
+playwright-report/
+test-results/
+
+# Local logs, editor backups and OS metadata
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment overrides may contain credentials; examples remain trackable
+.env.*
+!.env.example
+!.env.*.example
