@@ -30,6 +30,7 @@ try {
     assert.equal(state.overflow, false);
     assert.equal(state.sidebar === 'none', width <= 1000);
     assert.equal(state.trigger === 'none', width > 1000);
+    if (width <= 1000) assert.equal(probe(`getComputedStyle(document.querySelector('.workspace-nav-trigger')).position`),'fixed');
     results.push(state);
   }
   ab('set','viewport','360','800');
