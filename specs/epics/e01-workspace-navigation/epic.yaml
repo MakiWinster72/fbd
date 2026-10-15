@@ -1,11 +1,21 @@
 id: e01
 slug: workspace-navigation
 title: 工作区导航结构调整
-status: planning
-scope: 用户已选择桌面左侧导航，手机抽屉；仅计划交接
+status: implementing
+scope: e01s01侧栏已实施但全量验收未完；e01s02已获授权实施整屏聊天、证据次屏与轻量导航
 stories:
   - id: e01s01
     spec: e01s01-sidebar.md
     tasks: e01s01-tasks.yaml
     bcps: 4
     status: failing
+  - id: e01s02
+    spec: e01s02-viewport.md
+    tasks: e01s02-tasks.yaml
+    bcps: 4
+    status: failing
+handoff:
+  active_story: e01s02
+  next_skill: develop-tdd
+  implementation_authorized: true
+  note: 用户已明确开始实施；正在建立隔离验收，任务仅在对应验证通过后标passing。

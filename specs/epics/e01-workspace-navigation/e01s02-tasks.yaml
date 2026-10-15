@@ -1,0 +1,53 @@
+story_id: e01s02
+title: 整屏聊天、分屏吸附与轻量导航
+status: failing
+bcps: 4
+tasks:
+  - id: 1
+    description: 建立自启动隔离浏览器驱动及安全mock契约，模式真实分流
+    verify: "node apps/web/tests/workspace-viewport.qa.mjs --self-test"
+    risk: P1
+    status: failing
+    allure:
+      severity: high
+      categories: [integration, isolation]
+  - id: 2
+    description: 保留masthead移除topbar，动态首屏高度及稳定输入区
+    verify: "node apps/web/tests/workspace-viewport.qa.mjs --geometry"
+    risk: P1
+    status: failing
+    allure:
+      severity: high
+      categories: [layout, viewport]
+  - id: 3
+    description: 两屏柔性吸附、引用定位、独立滚动和减弱动效
+    verify: "node apps/web/tests/workspace-viewport.qa.mjs --scroll"
+    risk: P1
+    status: failing
+    allure:
+      severity: high
+      categories: [interaction, accessibility]
+  - id: 4
+    description: 重设计侧栏并保持角色会话行为与手机悬浮避让
+    verify: "node apps/web/tests/workspace-viewport.qa.mjs --navigation"
+    risk: P1
+    status: failing
+    allure:
+      severity: high
+      categories: [navigation, regression]
+  - id: 5
+    description: 类型检查、聊天代理单测与生产构建
+    verify: "cd apps/web && npm run check && node --test tests/chat-proxy.test.mjs && npm run build"
+    risk: P2
+    status: passing
+    allure:
+      severity: normal
+      categories: [build, regression]
+  - id: 6
+    description: 新旧浏览器矩阵、截图阅读与实际服务验收记录
+    verify: "node apps/web/tests/workspace-viewport.qa.mjs --all"
+    risk: P1
+    status: failing
+    allure:
+      severity: high
+      categories: [acceptance, accessibility]

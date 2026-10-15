@@ -6,6 +6,7 @@ import { useLanguage } from "@/components/language-provider";
 import { useConversationHistory } from "@/components/use-conversation-history";
 import { Modal } from "@/components/modal";
 import { WorkspaceNavigation } from "@/components/workspace-navigation";
+import { useWorkspaceViewport } from "@/components/use-workspace-viewport";
 
 type Message = {
   id: string;
@@ -145,6 +146,10 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
   const [latestSources, setLatestSources] = useState<Source[]>([]);
   const [mobileEvidenceOpen, setMobileEvidenceOpen] = useState(false);
   const [activeCitation, setActiveCitation] = useState<number | null>(null);
+  const workspaceRef = useRef<HTMLElement>(null);
+  const mainScrollRef = useRef<HTMLDivElement>(null);
+  const evidenceListRef = useRef<HTMLDivElement>(null);
+  useWorkspaceViewport(workspaceRef);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const questionRef = useRef<HTMLTextAreaElement>(null);
   const followTranscript = useRef(true);
@@ -172,6 +177,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
     setMobileEvidenceOpen(false);
     setQuestion("");
     setError(null);
+    mainScrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
   }, [history.replay]);
 
   useEffect(() => {
@@ -202,8 +208,20 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
     requestAnimationFrame(() => {
       const source = document.getElementById(`source-${index}`);
       source?.focus({ preventScroll: true });
-      source?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });
+      showEvidence();
+      const list = evidenceListRef.current;
+      if (source && list) list.scrollTo({ top: source.offsetTop - list.offsetTop, behavior: scrollBehavior() });
     });
+  }
+
+  function showEvidence() {
+    const main = mainScrollRef.current;
+    if (main) main.scrollTo({ top: main.clientHeight, behavior: scrollBehavior() });
+  }
+
+  function returnToChat() {
+    mainScrollRef.current?.scrollTo({ top: 0, behavior: scrollBehavior() });
+    questionRef.current?.focus({ preventScroll: true });
   }
 
   async function submitQuestion(nextQuestion = question) {
@@ -266,32 +284,17 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
   }[serviceState]);
 
   return (
-    <main id="main-content" tabIndex={-1} className="workspace-shell">
-      <header className="topbar">
-        <div className="brand-block">
-          <div className="brand-seal" aria-hidden="true">G</div>
-          <div>
-            <p className="eyebrow">{t("私有知识工作台")}</p>
-            <h1>{t("知识库工作台")}</h1>
-          </div>
-        </div>
-        <div className="topbar-meta">
-          <button className="workspace-nav-trigger" type="button" aria-haspopup="dialog" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(true)}>{t("打开导航")}</button>
-          {currentUser.role === "admin" ? <div className={`service-pill ${serviceState}`}><span aria-hidden="true" />{statusLabel}</div> : null}
-        </div>
-      </header>
+    <main id="main-content" tabIndex={-1} className="workspace-shell viewport-workspace" ref={workspaceRef}>
+      <button className="workspace-nav-trigger" type="button" aria-haspopup="dialog" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(true)}>{t("打开导航")}</button>
 
       <div className="workspace-layout">
-      <aside className="workspace-sidebar"><WorkspaceNavigation user={currentUser} knowledgeBases={knowledgeBases} history={history} busy={busy} onDelete={() => setConfirmDelete(true)} onNavigate={() => {}} /></aside>
-      <div className="workspace-main">
+      <aside className="workspace-sidebar"><WorkspaceNavigation user={currentUser} knowledgeBases={knowledgeBases} history={history} busy={busy} onDelete={() => setConfirmDelete(true)} onNavigate={returnToChat} serviceState={serviceState} statusLabel={statusLabel} /></aside>
+      <div className="workspace-main" ref={mainScrollRef}>
       <section className="workspace-grid">
         <section className="conversation-panel" aria-label={t("知识库对话")}>
           <div className="conversation-heading">
-            <div>
-              <p className="section-kicker">{t("资料问答")}</p>
-              <h2>{t("从材料中寻找答案")}</h2>
-            </div>
-            <p className="conversation-note">{t("回答仅来自已入库文档，引用编号可定位到右侧证据。")}</p>
+            <h1>{t("知识库对话")}</h1>
+            <button className="workspace-show-evidence" type="button" onClick={showEvidence}>{t("查看证据")} · {latestSources.length}</button>
           </div>
 
           <div className="transcript" ref={transcriptRef} role="log" aria-label={t("知识库对话")} tabIndex={0} aria-busy={busy} onScroll={(event) => { const node = event.currentTarget; followTranscript.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80; }}>
@@ -387,10 +390,11 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
               <p className="section-kicker">{t("引用证据")}</p>
               <h2>{t("引用来源")}</h2>
             </div>
+            <button className="workspace-return-chat" type="button" onClick={returnToChat}>{t("返回对话")}</button>
             <span className="source-count">{String(latestSources.length).padStart(2, "0")}</span>
           </div>
 
-          <div className="evidence-list">
+          <div className="evidence-list" ref={evidenceListRef}>
             {latestSources.length ? (
               <SourceCards sources={latestSources} idPrefix="source" activeCitation={activeCitation} />
             ) : (
@@ -410,7 +414,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
       </section>
       </div>
       </div>
-      {navigationOpen ? <Modal className="workspace-nav-drawer" label={t("工作区导航")} onClose={() => setNavigationOpen(false)}><button className="workspace-nav-close" type="button" data-initial-focus onClick={() => setNavigationOpen(false)}>{t("关闭导航")}</button><WorkspaceNavigation user={currentUser} knowledgeBases={knowledgeBases} history={history} busy={busy} onDelete={() => { setNavigationOpen(false); setConfirmDelete(true); }} onNavigate={() => setNavigationOpen(false)} /></Modal> : null}
+      {navigationOpen ? <Modal className="workspace-nav-drawer" label={t("工作区导航")} onClose={() => setNavigationOpen(false)}><button className="workspace-nav-close" type="button" data-initial-focus onClick={() => setNavigationOpen(false)}>{t("关闭导航")}</button><WorkspaceNavigation user={currentUser} knowledgeBases={knowledgeBases} history={history} busy={busy} onDelete={() => { setNavigationOpen(false); setConfirmDelete(true); }} onNavigate={() => { setNavigationOpen(false); returnToChat(); }} serviceState={serviceState} statusLabel={statusLabel} /></Modal> : null}
 
       {mobileEvidenceOpen ? (
         <Modal className="mobile-evidence-sheet" label={t("引用来源")} onClose={() => setMobileEvidenceOpen(false)}>

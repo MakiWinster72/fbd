@@ -1100,6 +1100,53 @@
   .workspace-nav-close { margin:12px 18px 0; min-height:44px; padding:8px 12px; background:white; border:1px solid #cdd6d2; border-radius:8px; }
   @media(max-width:1000px) { .workspace-layout { grid-template-columns:minmax(0,1fr); gap:0; } .workspace-sidebar { display:none; } .workspace-shell { padding-bottom:calc(80px + env(safe-area-inset-bottom, 0px)); } .workspace-nav-trigger { position:fixed; left:calc(16px + env(safe-area-inset-left, 0px)); bottom:calc(16px + env(safe-area-inset-bottom, 0px)); z-index:30; display:inline-flex; align-items:center; justify-content:center; min-height:48px; padding:12px 18px; border:1px solid #244f68; border-radius:999px; background:var(--archive-blue); color:white; box-shadow:0 4px 16px #172c4326; } .topbar-meta { width:auto; flex-wrap:wrap; } }
 
+  /* Workspace-only viewport frame: no body lock or global snapping. */
+  .workspace-shell.viewport-workspace { width:100%; height:var(--workspace-height, 100dvh); min-height:0; margin:0; padding:0; border:0; border-radius:0; box-shadow:none; overflow:hidden; background:#fff; }
+  .viewport-workspace .workspace-layout { height:100%; min-height:0; grid-template-columns:248px minmax(0,1fr); gap:0; align-items:stretch; }
+  .viewport-workspace .workspace-sidebar { min-height:0; border:0; border-right:1px solid #dfe6ea; border-radius:0; background:#f7f9fa; overflow:auto; }
+  .viewport-workspace .workspace-main { height:100%; min-height:0; overflow-y:auto; scroll-snap-type:y proximity; }
+  .viewport-workspace .workspace-grid { display:block; min-height:0; }
+  .viewport-workspace .conversation-panel, .viewport-workspace .evidence-panel { height:var(--workspace-height,100dvh); min-height:0; margin:0; box-sizing:border-box; scroll-snap-align:start; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) auto; overflow:hidden; }
+  .viewport-workspace .conversation-heading { min-height:60px; padding:12px 24px; align-items:center; display:flex; }
+  .viewport-workspace .conversation-heading h1 { margin:0; font-size:18px; line-height:1.4; }
+  .viewport-workspace .workspace-show-evidence, .viewport-workspace .workspace-return-chat { min-height:44px; border:1px solid #dfe6ea; border-radius:8px; background:#fff; color:#246455; padding:8px 12px; cursor:pointer; }
+  .viewport-workspace .transcript { min-height:0; max-height:none; overflow:auto; overscroll-behavior:contain; padding:16px max(24px,calc((100% - 840px)/2)); }
+  .viewport-workspace .message { max-width:840px; margin-inline:auto; }
+  .viewport-workspace .composer-zone { padding:12px max(24px,calc((100% - 840px)/2)); }
+  .viewport-workspace .quick-questions { display:flex; flex-wrap:nowrap; overflow-x:auto; margin-bottom:8px; gap:8px; }
+  .viewport-workspace .quick-questions button { white-space:nowrap; flex-shrink:0; min-height:36px; font-size:12px; }
+  .viewport-workspace .composer { padding:12px; }
+  .viewport-workspace .composer textarea { font-size:16px; }
+  .viewport-workspace .evidence-heading { min-height:76px; display:flex; align-items:center; padding:12px 24px; }
+  .viewport-workspace .evidence-heading .source-count { margin-left:auto; }
+  .viewport-workspace .evidence-list { min-height:0; max-height:none; overflow:auto; overscroll-behavior:contain; position:relative; }
+  .viewport-workspace .evidence-footnote { padding:12px 24px; }
+  .viewport-workspace .workspace-navigation { height:100%; min-height:0; padding:16px; gap:16px; color:#172c43; }
+  .viewport-workspace .workspace-navigation section + section { margin:0; padding-top:12px; border-top:1px solid #dfe6ea; }
+  .viewport-workspace .workspace-nav-context { flex-shrink:0; }
+  .viewport-workspace .workspace-nav-history { flex:1; min-height:0; display:flex; flex-direction:column; }
+  .viewport-workspace .workspace-nav-history ul { flex:1; min-height:40px; max-height:none; overflow:auto; overscroll-behavior:contain; display:block; }
+  .viewport-workspace .workspace-navigation button, .viewport-workspace .workspace-navigation a { border-color:transparent; }
+  .viewport-workspace .workspace-navigation .workspace-nav-new { background:#246455; }
+  .viewport-workspace .workspace-nav-history li button { border:0; border-left:2px solid transparent; border-radius:0 8px 8px 0; }
+  .viewport-workspace .workspace-nav-history li button[aria-current=true] { background:#e8f0ed; border-left-color:#246455; }
+  .viewport-workspace .workspace-nav-account { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; flex-shrink:0; }
+  .viewport-workspace .workspace-nav-account strong { width:100%; overflow-wrap:anywhere; font-size:13px; }
+  .viewport-workspace .workspace-nav-account .service-pill { width:100%; min-height:24px; padding:0; font-size:11px; background:transparent; }
+  .viewport-workspace .workspace-nav-hint { margin:6px 0 0; font-size:10px; line-height:1.4; }
+  .viewport-workspace .workspace-nav-admin { flex-shrink:0; }
+  .viewport-workspace .workspace-nav-drawer .workspace-navigation { height:calc(100% - 60px); }
+  .viewport-workspace[data-compact=true] .workspace-main { scroll-snap-type:none; }
+  .viewport-workspace[data-compact=true] .conversation-panel { grid-template-rows:auto minmax(80px,1fr) auto; overflow-y:auto; }
+  .viewport-workspace[data-compact=true] .quick-questions { display:none; }
+  @media(max-width:1000px) {
+    .viewport-workspace .workspace-layout { grid-template-columns:minmax(0,1fr); }
+    .viewport-workspace .composer-zone { padding:8px 12px calc(72px + env(safe-area-inset-bottom,0px)); }
+    .viewport-workspace .evidence-panel { padding-bottom:calc(72px + env(safe-area-inset-bottom,0px)); }
+    .viewport-workspace .transcript { padding-inline:16px; }
+    .viewport-workspace .conversation-heading { padding-inline:16px; }
+  }
+  @media(prefers-reduced-motion:reduce) { .viewport-workspace .workspace-main { scroll-snap-type:none; } }
   @media (pointer: coarse) { .desktop-input-hint { display: none; } .touch-input-hint { display: inline; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
 }

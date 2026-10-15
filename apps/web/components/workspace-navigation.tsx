@@ -5,9 +5,9 @@ import { useLanguage } from "@/components/language-provider";
 import { useConversationHistory } from "@/components/use-conversation-history";
 import { logout, type CurrentUser, type KnowledgeBase } from "@/lib/api";
 
-type Props = { user: CurrentUser; knowledgeBases: KnowledgeBase[]; history: ReturnType<typeof useConversationHistory>; busy: boolean; onDelete: () => void; onNavigate: () => void };
+type Props = { user: CurrentUser; knowledgeBases: KnowledgeBase[]; history: ReturnType<typeof useConversationHistory>; busy: boolean; onDelete: () => void; onNavigate: () => void; serviceState: string; statusLabel: string };
 
-export function WorkspaceNavigation({ user, knowledgeBases, history, busy, onDelete, onNavigate }: Props) {
+export function WorkspaceNavigation({ user, knowledgeBases, history, busy, onDelete, onNavigate, serviceState, statusLabel }: Props) {
   const { t } = useLanguage();
   const knowledgeBaseControlId = useId();
   const [signingOut, setSigningOut] = useState(false);
@@ -31,6 +31,6 @@ export function WorkspaceNavigation({ user, knowledgeBases, history, busy, onDel
       <p className="workspace-nav-hint">{t("会话仅对当前账号可见；历史答案及引用保留生成时的内容，本轮仍独立检索。")}</p>
     </section> : null}
     {user.role === "admin" ? <section className="workspace-nav-admin" aria-label={t("管理导航")}><a href="/admin/documents">{t("文件导入")}</a><a href="/admin/models">{t("管理后台")}</a></section> : null}
-    <section className="workspace-nav-account"><strong>{user.display_name}</strong><a href="/account">{t("用户中心")}</a><button type="button" disabled={disabled} onClick={async () => { setSigningOut(true); setLogoutError(false); try { await logout(); window.location.assign("/login"); } catch { setLogoutError(true); setSigningOut(false); } }}>{t(signingOut ? "正在退出…" : "退出")}</button>{logoutError ? <p role="alert">{t("退出失败，请重试")}</p> : null}</section>
+    <section className="workspace-nav-account">{user.role === "admin" ? <div className={`service-pill ${serviceState}`}><span aria-hidden="true" />{statusLabel}</div> : null}<strong>{user.display_name}</strong><a href="/account">{t("用户中心")}</a><button type="button" disabled={disabled} onClick={async () => { setSigningOut(true); setLogoutError(false); try { await logout(); window.location.assign("/login"); } catch { setLogoutError(true); setSigningOut(false); } }}>{t(signingOut ? "正在退出…" : "退出")}</button>{logoutError ? <p role="alert">{t("退出失败，请重试")}</p> : null}</section>
   </nav>;
 }

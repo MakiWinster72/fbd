@@ -3,7 +3,7 @@ export type Locale = "zh-CN" | "en";
 const english: Record<string, string> = {
   "工作区导航": "Workspace navigation", "打开导航": "Open navigation", "关闭导航": "Close navigation",
   "暂无会话历史": "No conversations yet", "正在退出…": "Signing out…", "退出失败，请重试": "Sign-out failed. Please retry.",
-  "知识库管理": "Knowledge bases",
+  "知识库管理": "Knowledge bases", "用户中心": "Account",
   "管理导航": "Administration", "显示密码": "Show password", "隐藏密码": "Hide password",
   "页码": "Page", "重排序得分": "Rerank score", "向量得分": "Vector score",
   "查看完整引用片段": "Read full excerpt", "管理会话": "Manage conversations", "会话管理": "Conversation management",
@@ -54,6 +54,7 @@ const english: Record<string, string> = {
   "检查服务": "Checking service", "检索服务在线": "Search service online", "部分服务异常": "Some services are degraded", "服务未连接": "Service offline",
   "当前资料库": "Current archive", "选择知识库": "Select knowledge base", "当前知识库": "Current knowledge base",
   "文件导入": "Import documents", "管理后台": "Admin area", "退出": "Sign out", "知识库对话": "Knowledge base chat",
+  "查看证据": "View evidence", "返回对话": "Back to chat",
   "从材料中寻找答案": "Find answers in your documents", "回答仅来自已入库文档，引用编号可定位到右侧证据。": "Answers use indexed documents only. Citation numbers link to the evidence panel.",
   "资料助手": "Archive assistant", "你的问题": "Your question", "条证据": "sources", "已核对文件与页码": "Files and pages verified",
   "正在检索材料并核对引用…": "Searching documents and verifying citations…", "引用来源": "Cited sources", "查看页码与原文": "View pages and excerpts",
