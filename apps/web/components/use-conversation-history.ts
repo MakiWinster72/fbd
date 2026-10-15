@@ -112,22 +112,24 @@ export function useConversationHistory(userId: string, knowledgeBases: Knowledge
     setKnowledgeBaseId(id);
   }
 
-  async function open(id: string) {
-    if (!id || answering || restoring || questionBusy.current || viewBusy.current) return;
+  async function open(id: string): Promise<boolean> {
+    if (!id || answering || restoring || questionBusy.current || viewBusy.current) return false;
     const version = ++viewVersion.current;
     viewBusy.current = true;
     setRestoring(true);
     setError(null);
     try {
       const detail = await getConversation(id);
-      if (!alive.current || version !== viewVersion.current) return;
+      if (!alive.current || version !== viewVersion.current) return false;
       if (!knowledgeBases.some((item) => item.id === detail.conversation.knowledge_base_id)) throw new Error("没有访问该知识库的权限");
       setActive(detail.conversation);
       setKnowledgeBaseId(detail.conversation.knowledge_base_id);
       setReplay({ detail });
       writeConversationUrl(id);
+      return true;
     } catch (reason) {
       if (alive.current && version === viewVersion.current) setError(reason instanceof Error ? reason.message : "无法恢复会话");
+      return false;
     } finally {
       if (alive.current && version === viewVersion.current) { viewBusy.current = false; setRestoring(false); }
     }

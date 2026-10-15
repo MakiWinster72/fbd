@@ -1,6 +1,8 @@
 export type Locale = "zh-CN" | "en";
 
 const english: Record<string, string> = {
+  "工作区导航": "Workspace navigation", "打开导航": "Open navigation", "关闭导航": "Close navigation",
+  "暂无会话历史": "No conversations yet", "正在退出…": "Signing out…", "退出失败，请重试": "Sign-out failed. Please retry.",
   "知识库管理": "Knowledge bases",
   "管理导航": "Administration", "显示密码": "Show password", "隐藏密码": "Hide password",
   "页码": "Page", "重排序得分": "Rerank score", "向量得分": "Vector score",

@@ -1,0 +1,11 @@
+id: e01
+slug: workspace-navigation
+title: 工作区导航结构调整
+status: planning
+scope: 用户已选择桌面左侧导航，手机抽屉；仅计划交接
+stories:
+  - id: e01s01
+    spec: e01s01-sidebar.md
+    tasks: e01s01-tasks.yaml
+    bcps: 4
+    status: failing

@@ -1,0 +1,44 @@
+story_id: e01s01
+title: 工作区左侧导航重设计
+status: failing
+bcps: 4
+risk: P1
+planning_gate: local_consistency_check_passed
+implementation_authorized: true
+tasks:
+  - id: 1
+    description: 建立隔离浏览器测试及基线，所有API写操作使用mock
+    verify: node apps/web/tests/workspace-navigation.qa.mjs --baseline
+    risk: P1
+    status: failing
+    allure: {severity: high, categories: [browser, baseline]}
+  - id: 2
+    description: 提取共享导航呈现组件并实现桌面左栏
+    verify: node apps/web/tests/workspace-navigation.qa.mjs --desktop
+    risk: P2
+    status: failing
+    allure: {severity: normal, categories: [layout]}
+  - id: 3
+    description: 实现手机抽屉、键盘焦点及断点切换
+    verify: node apps/web/tests/workspace-navigation.qa.mjs --mobile
+    risk: P1
+    status: failing
+    allure: {severity: high, categories: [accessibility, responsive]}
+  - id: 4
+    description: 覆盖双语、权限展示、空权限账号入口及退出错误
+    verify: node apps/web/tests/workspace-navigation.qa.mjs --states
+    risk: P1
+    status: failing
+    allure: {severity: high, categories: [permissions, localization]}
+  - id: 5
+    description: 类型检查、代理回归及生产构建
+    verify: cd apps/web && npm run check && node --test tests/chat-proxy.test.mjs && npm run build
+    risk: P1
+    status: passing
+    allure: {severity: high, categories: [regression]}
+  - id: 6
+    description: 完整浏览器验收并保存截图与报告
+    verify: node apps/web/tests/workspace-navigation.qa.mjs --all
+    risk: P1
+    status: failing
+    allure: {severity: high, categories: [browser, acceptance]}

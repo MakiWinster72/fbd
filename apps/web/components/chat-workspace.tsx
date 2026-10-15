@@ -1,10 +1,11 @@
 "use client";
 
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
-import { askKnowledgeBase, fetchHealth, logout, type CurrentUser, type KnowledgeBase, type Source } from "@/lib/api";
+import { askKnowledgeBase, fetchHealth, type CurrentUser, type KnowledgeBase, type Source } from "@/lib/api";
 import { useLanguage } from "@/components/language-provider";
 import { useConversationHistory } from "@/components/use-conversation-history";
 import { Modal } from "@/components/modal";
+import { WorkspaceNavigation } from "@/components/workspace-navigation";
 
 type Message = {
   id: string;
@@ -148,6 +149,13 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
   const questionRef = useRef<HTMLTextAreaElement>(null);
   const followTranscript = useRef(true);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1001px)");
+    const closeOnDesktop = () => { if (desktop.matches) setNavigationOpen(false); };
+    desktop.addEventListener("change", closeOnDesktop);
+    return () => desktop.removeEventListener("change", closeOnDesktop);
+  }, []);
   const history = useConversationHistory(currentUser.id, knowledgeBases, loading);
   const selectedKnowledgeBaseId = history.knowledgeBaseId;
   const busy = loading || history.restoring;
@@ -196,11 +204,6 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
       source?.focus({ preventScroll: true });
       source?.scrollIntoView({ behavior: scrollBehavior(), block: "nearest" });
     });
-  }
-
-  function changeKnowledgeBase(knowledgeBaseId: string) {
-    if (busy) return;
-    history.changeKnowledgeBase(knowledgeBaseId);
   }
 
   async function submitQuestion(nextQuestion = question) {
@@ -273,40 +276,14 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
           </div>
         </div>
         <div className="topbar-meta">
-          <div className={`service-pill ${serviceState}`}>
-            <span aria-hidden="true" />
-            {statusLabel}
-          </div>
-          <div className="collection-label">
-            <span>{t("当前资料库")}</span>
-            {knowledgeBases.length > 1 ? (
-              <select
-                aria-label={t("选择知识库")}
-                value={selectedKnowledgeBaseId}
-                disabled={busy}
-                onChange={(event) => changeKnowledgeBase(event.target.value)}
-              >
-                {knowledgeBases.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-              </select>
-            ) : <strong>{knowledgeBases[0].name}</strong>}
-          </div>
-          <div className="user-menu">
-            <span>{currentUser.display_name}</span>
-            <a href="/account">{locale === "en" ? "User center" : "用户中心"}</a>
-            {currentUser.role === "admin" ? <><a href="/admin/documents">{t("文件导入")}</a><a href="/admin/models">{t("管理后台")}</a></> : null}
-            <button
-              type="button"
-              onClick={async () => {
-                await logout();
-                window.location.assign("/login");
-              }}
-            >
-              {t("退出")}
-            </button>
-          </div>
+          <button className="workspace-nav-trigger" type="button" aria-haspopup="dialog" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(true)}>{t("打开导航")}</button>
+          <div className={`service-pill ${serviceState}`}><span aria-hidden="true" />{statusLabel}</div>
         </div>
       </header>
 
+      <div className="workspace-layout">
+      <aside className="workspace-sidebar"><WorkspaceNavigation user={currentUser} knowledgeBases={knowledgeBases} history={history} busy={busy} onDelete={() => setConfirmDelete(true)} onNavigate={() => {}} /></aside>
+      <div className="workspace-main">
       <section className="workspace-grid">
         <section className="conversation-panel" aria-label={t("知识库对话")}>
           <div className="conversation-heading">
@@ -315,37 +292,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
               <h2>{t("从材料中寻找答案")}</h2>
             </div>
             <p className="conversation-note">{t("回答仅来自已入库文档，引用编号可定位到右侧证据。")}</p>
-            {knowledgeBases.length > 1 ? (
-              <label className="mobile-kb-selector">
-                <span>{t("当前知识库")}</span>
-                <select value={selectedKnowledgeBaseId} disabled={busy} onChange={(event) => changeKnowledgeBase(event.target.value)}>
-                  {knowledgeBases.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-              </label>
-            ) : null}
           </div>
-
-          {history.enabled ? (
-            <section className="history-controls" aria-label={t("会话历史")}>
-              <label htmlFor="conversation-history">{t("会话历史")}</label>
-              <select id="conversation-history" value={history.active?.id ?? ""} disabled={busy || history.listing} onChange={(event) => { if (event.target.value) void history.open(event.target.value); else history.startNew(); }}>
-                <option value="">{t(history.restoring ? "正在恢复会话…" : "新会话")}</option>
-                {history.active && !history.items.some((item) => item.id === history.active?.id) ? <option value={history.active.id}>{history.active.title}</option> : null}
-                {history.items.map((item) => <option key={item.id} value={item.id}>{item.title} · {item.turn_count} {t("轮问答")}</option>)}
-              </select>
-              <button type="button" disabled={busy} onClick={history.startNew}>{t("新建会话")}</button>
-              <details className="history-more">
-                <summary>{t("管理会话")}</summary>
-                <div className="history-actions">
-                  <button type="button" disabled={busy || history.listing} onClick={history.refresh}>{t(history.listing ? "加载中…" : "刷新列表")}</button>
-                  {history.hasMore ? <button type="button" disabled={busy || history.listing} onClick={() => void history.loadMore()}>{t("加载更多")}</button> : null}
-                  <button className="danger-action" type="button" disabled={busy || !history.active} onClick={() => setConfirmDelete(true)}>{t("删除会话")}</button>
-                  <p>{t("会话仅对当前账号可见；历史答案及引用保留生成时的内容，本轮仍独立检索。")}</p>
-                </div>
-              </details>
-              {history.error ? <p className="history-error" role="alert">{t(history.error)}</p> : null}
-            </section>
-          ) : null}
 
           <div className="transcript" ref={transcriptRef} role="log" aria-label={t("知识库对话")} tabIndex={0} aria-busy={busy} onScroll={(event) => { const node = event.currentTarget; followTranscript.current = node.scrollHeight - node.scrollTop - node.clientHeight < 80; }}>
             {messages.map((message) => (
@@ -461,6 +408,9 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
           </div>
         </aside>
       </section>
+      </div>
+      </div>
+      {navigationOpen ? <Modal className="workspace-nav-drawer" label={t("工作区导航")} onClose={() => setNavigationOpen(false)}><button className="workspace-nav-close" type="button" data-initial-focus onClick={() => setNavigationOpen(false)}>{t("关闭导航")}</button><WorkspaceNavigation user={currentUser} knowledgeBases={knowledgeBases} history={history} busy={busy} onDelete={() => { setNavigationOpen(false); setConfirmDelete(true); }} onNavigate={() => setNavigationOpen(false)} /></Modal> : null}
 
       {mobileEvidenceOpen ? (
         <Modal className="mobile-evidence-sheet" label={t("引用来源")} onClose={() => setMobileEvidenceOpen(false)}>
