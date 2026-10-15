@@ -71,6 +71,7 @@ SYSTEM_PROMPT = """你是私有文档知识库助手。
 5. 证据不足时直接回答“当前知识库中没有足够依据回答该问题”。
 6. 回答使用简体中文，先给结论，再给必要说明。
 7. 每个事实只引用直接支持它的最少证据。同一事实重复出现且高排名证据已足够时，不要追加重复引用；不能因片段字段相似就引用，项目编号等标识必须精确匹配。
+8. 用户请求整库或多份资料概览时，明确说明仅概括本轮检索证据，不得声称已经阅读或覆盖所有文档。
 """
 
 SYSTEM_PROMPT_EN = """You are an assistant for a private document knowledge base.
@@ -82,6 +83,7 @@ Follow these rules strictly:
 5. If evidence is insufficient, reply: "There is not enough evidence in the current knowledge base to answer this question."
 6. Answer in English. Give the conclusion first, followed by necessary details.
 7. Cite the minimum evidence that directly supports each fact. When higher-ranked evidence already suffices for a repeated fact, do not add duplicate citations. Similar fields alone do not justify a citation; project codes and other identifiers must match exactly.
+8. For an overview of the knowledge base or multiple documents, explicitly limit the summary to this request's retrieved evidence; do not claim to have read or covered all documents.
 """
 
 
@@ -179,15 +181,21 @@ class RagService:
             rescored = [replace(source, score=score, rerank_score=score) for source, score in ranked if rerank_min_score is None or score >= rerank_min_score]
             return _limit_sources(rescored, self.top_k, document_names)
         except Exception as exc:
-            logger.warning("Reranker failed; falling back to vector order: %s", exc)
+            logger.warning("Reranker failed; falling back to vector order: %s", exc, exc_info=True)
             fallback = [source for source in candidates if source.score >= self.min_score]
             return _limit_sources(fallback, self.top_k, document_names)
 
     def answer(self, question: str, knowledge_base_id: str, locale: str = "zh-CN", history: tuple[HistoryTurn, ...] = ()) -> ChatResult:
         english = locale == "en"
+        if re.fullmatch(r"(?:hi|hello|hey|你好|您好|嗨|哈喽)[\s!！。.?？]*", question.strip(), re.IGNORECASE):
+            return ChatResult(
+                "Hello! Ask me about facts, policies, or procedures in the current knowledge base, or ask me to list its indexed documents."
+                if english else "你好！可以向我询问当前知识库中的事实、制度或流程，也可以让我列出已入库文档。",
+                False, (),
+            )
         original_question = question
         # Explicit inventory requests remain deterministic, even in long conversations.
-        if history and not _asks_document_inventory(question):
+        if history and not (_asks_document_inventory(question) or _is_explicit_knowledge_base_overview(question)):
             resolved = resolve_question(question, history, self.chat_model.complete)
             valid = resolved is not None
             if resolved is not None:
@@ -244,8 +252,17 @@ class RagService:
         return ChatResult(answer=answer, grounded=True, sources=sources)
 
 
+def _is_explicit_knowledge_base_overview(question: str) -> bool:
+    """An explicitly whole-base question must not inherit an earlier file scope."""
+    normalized = unicodedata.normalize("NFKC", question).strip().casefold().rstrip(".!?。！？")
+    return normalized in {
+        "知识库中写了什么", "知识库里写了什么", "当前知识库主要讲什么", "当前知识库的核心内容是什么",
+        "what is in this knowledge base", "what does this knowledge base contain",
+    }
+
+
 def _has_document_reference(question: str) -> bool:
-    return bool(re.search(r"《|[.](?:pdf|docx)\b", question, re.I))
+    return bool(re.search(r"《|[.](?:pdf|docx)\b", question, re.IGNORECASE))
 
 
 def _requested_document_names(question: str, available: list[str]) -> tuple[str, ...]:
@@ -285,16 +302,16 @@ def _per_file_questions(question: str, document_names: tuple[str, ...] | None) -
     elif markers:
         return {}
     else:
-        match = re.search(r"\b(?:give|provide|state|list)\s+(.+?),?\s+respectively[.!?]*$", query, re.I)
+        match = re.search(r"\b(?:give|provide|state|list)\s+(.+?),?\s+respectively[.!?]*$", query, re.IGNORECASE)
         if match is None:
             return {}
         english = True
         prefix = query[:match.start()]
         body = match[1].rstrip(", ")
     # English possessives and shared/distributive clauses have ambiguous owner scope.
-    if re.search(r"['’]s\b|\bof\b", body, re.I):
+    if re.search(r"['’]s\b|\bof\b", body, re.IGNORECASE):
         return {}
-    if re.search(r"各|每|双方|两者|自身|共同|均|[.](?:pdf|docx)\b|\b(?:each|every|both|their|respective)\b", body, re.I):
+    if re.search(r"各|每|双方|两者|自身|共同|均|[.](?:pdf|docx)\b|\b(?:each|every|both|their|respective)\b", body, re.IGNORECASE):
         return {}
     normalized_body = body.casefold()
     for name in document_names:
@@ -306,8 +323,8 @@ def _per_file_questions(question: str, document_names: tuple[str, ...] | None) -
     # Only an ordered list of quoted, verified files before the fields is unambiguous.
     if len(re.findall(r"《[^》]+》", prefix)) != len(document_names) or _requested_document_names(prefix, list(document_names)) != document_names:
         return {}
-    fields = [field.strip() for field in re.split(r"\s*(?:以及|和|与|、|\band\b)\s*", body, flags=re.I)]
-    if len(fields) != len(document_names) or any(not field or re.search(r"[，,;；。!?！？《》]|是否|如何|为什么|\b(?:whether|how|why)\b", field, re.I) for field in fields):
+    fields = [field.strip() for field in re.split(r"\s*(?:以及|和|与|、|\band\b)\s*", body, flags=re.IGNORECASE)]
+    if len(fields) != len(document_names) or any(not field or re.search(r"[，,;；。!?！？《》]|是否|如何|为什么|\b(?:whether|how|why)\b", field, re.IGNORECASE) for field in fields):
         return {}
     # Preserve only explicit neutral subject modifiers. Never infer a missing owner,
     # and never let such a word override the known file-alias check above.

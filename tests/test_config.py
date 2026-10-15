@@ -15,12 +15,20 @@ class SettingsTests(unittest.TestCase):
             settings = Settings.from_env()
         self.assertEqual(settings.retrieval_rerank_min_score, 0.8)
         self.assertEqual(settings.retrieval_min_score, 0.35)
-        self.assertEqual(Settings().retrieval_rerank_min_score, 0.5)
+        self.assertIsNone(Settings().retrieval_rerank_min_score)
 
     def test_independent_rerank_threshold_requires_finite_probability(self) -> None:
         for threshold in [0.0, -0.1, 1.1, float("nan"), float("inf")]:
             with self.subTest(threshold=threshold), self.assertRaises(ValueError):
                 Settings(retrieval_rerank_min_score=threshold)
+
+    def test_unset_or_blank_rerank_threshold_uses_ranking_only(self) -> None:
+        for environment in [{}, {"RAG_RETRIEVAL_RERANK_MIN_SCORE": ""}, {"RAG_RETRIEVAL_RERANK_MIN_SCORE": "  "}]:
+            with self.subTest(environment=environment):
+                with patch("knowledge_rag.config.load_dotenv"), patch.dict(os.environ, environment, clear=True):
+                    settings = Settings.from_env()
+                self.assertIsNone(settings.retrieval_rerank_min_score)
+                self.assertEqual(settings.retrieval_min_score, 0.35)
 
     def test_from_env_loads_dotenv_from_launch_directory(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
