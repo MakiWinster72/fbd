@@ -23,7 +23,7 @@ try {
   ab('open', base);
   ab('wait', '.workspace-sidebar');
   evaluate(`window.fetch = ((original) => async (input, init) => { const url = String(input); if (url.includes('/rag-api/') && init?.method && init.method !== 'GET') return new Response(JSON.stringify({detail:'QA blocked mutation'}), {status:503,headers:{'Content-Type':'application/json'}}); return original(input,init); })(window.fetch.bind(window));`);
-  for (const width of [1280, 360, 1000, 1001]) {
+  for (const width of [1440, 1280, 768, 360, 1000, 1001]) {
     ab('set','viewport',String(width),'900');
     const state = probe(`({width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth,sidebar:getComputedStyle(document.querySelector('.workspace-sidebar')).display,trigger:getComputedStyle(document.querySelector('.workspace-nav-trigger')).display,columns:getComputedStyle(document.querySelector('.workspace-layout')).gridTemplateColumns})`);
     assert.equal(state.overflow, false);
@@ -34,6 +34,14 @@ try {
   ab('set','viewport','360','800');
   ab('click','.workspace-nav-trigger');
   ab('wait','dialog[open]');
+  assert.equal(probe(`document.activeElement.classList.contains('workspace-nav-close')`),true);
+  ab('press','Shift+Tab');
+  // Native Chromium dialogs may move reverse-Tab to browser chrome (BODY).
+  // Background page controls must never receive focus; Tab must return inside.
+  assert.equal(probe(`document.activeElement === document.body || !!document.activeElement.closest('dialog[open]')`),true);
+  evaluate(`document.querySelector('.workspace-nav-trigger').focus()`);
+  assert.equal(probe(`document.activeElement.classList.contains('workspace-nav-trigger')`),false);
+  ab('press','Tab');
   assert.equal(probe(`document.activeElement.classList.contains('workspace-nav-close')`),true);
   ab('press','Escape');
   assert.equal(probe(`document.querySelector('dialog[open]') === null`),true);
@@ -62,6 +70,12 @@ try {
   mock('/health', {status:'ok',dependencies:{}});
   ab('open',base);
   ab('wait','--fn', "document.documentElement.lang === 'en' && !!document.querySelector('.workspace-sidebar')");
+  for (const width of [1440, 1280, 1001, 1000, 768, 360]) {
+    ab('set','viewport',String(width),'900');
+    assert.equal(probe(`document.documentElement.scrollWidth > innerWidth`),false);
+    assert.equal(probe(`getComputedStyle(document.querySelector('.workspace-sidebar')).display === 'none'`),width <= 1000);
+  }
+  ab('set','viewport','1280','900');
   assert.equal(probe(`document.querySelectorAll('.workspace-sidebar .workspace-nav-admin').length`),0);
   assert.equal(probe(`document.querySelector('.workspace-sidebar nav').getAttribute('aria-label')`),'Workspace navigation');
   evaluate(`window.fetch = async () => new Response(JSON.stringify({detail:'QA blocked mutation'}), {status:503,headers:{'Content-Type':'application/json'}})`);
