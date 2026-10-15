@@ -277,7 +277,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
         </div>
         <div className="topbar-meta">
           <button className="workspace-nav-trigger" type="button" aria-haspopup="dialog" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(true)}>{t("打开导航")}</button>
-          <div className={`service-pill ${serviceState}`}><span aria-hidden="true" />{statusLabel}</div>
+          {currentUser.role === "admin" ? <div className={`service-pill ${serviceState}`}><span aria-hidden="true" />{statusLabel}</div> : null}
         </div>
       </header>
 

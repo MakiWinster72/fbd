@@ -22,6 +22,7 @@ try {
   await Promise.resolve();
   ab('open', base);
   ab('wait', '.workspace-sidebar');
+  assert.equal(probe(`document.querySelectorAll('.service-pill').length`),1);
   evaluate(`window.fetch = ((original) => async (input, init) => { const url = String(input); if (url.includes('/rag-api/') && init?.method && init.method !== 'GET') return new Response(JSON.stringify({detail:'QA blocked mutation'}), {status:503,headers:{'Content-Type':'application/json'}}); return original(input,init); })(window.fetch.bind(window));`);
   for (const width of [1440, 1280, 768, 360, 1000, 1001]) {
     ab('set','viewport',String(width),'900');
@@ -76,6 +77,7 @@ try {
     assert.equal(probe(`getComputedStyle(document.querySelector('.workspace-sidebar')).display === 'none'`),width <= 1000);
   }
   ab('set','viewport','1280','900');
+  assert.equal(probe(`document.querySelectorAll('.service-pill').length`),0);
   assert.equal(probe(`document.querySelectorAll('.workspace-sidebar .workspace-nav-admin').length`),0);
   assert.equal(probe(`document.querySelector('.workspace-sidebar nav').getAttribute('aria-label')`),'Workspace navigation');
   evaluate(`window.fetch = async () => new Response(JSON.stringify({detail:'QA blocked mutation'}), {status:503,headers:{'Content-Type':'application/json'}})`);
