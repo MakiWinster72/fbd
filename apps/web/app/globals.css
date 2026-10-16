@@ -2378,7 +2378,16 @@
   .site-navigation {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
+    margin-left: auto;
+    flex-shrink: 0;
     gap: 12px;
+  }
+  .site-navigation .site-settings-link {
+    width: 44px;
+    padding: 0;
+    justify-content: center;
+    font-size: 18px;
   }
   .site-navigation a {
     display: inline-flex;
@@ -3186,7 +3195,7 @@
     }
     .site-navigation {
       width: 100%;
-      justify-content: space-between;
+      justify-content: flex-end;
       gap: 6px;
     }
     .site-navigation a {

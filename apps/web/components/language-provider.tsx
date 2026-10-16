@@ -102,14 +102,15 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
           <Link href="/" aria-current={pathname === "/" ? "page" : undefined}>
             {locale === "en" ? "Workspace" : "工作台"}
           </Link>
-          {pathname !== "/" ? (
-            <Link
-              href="/account"
-              aria-current={pathname === "/account" ? "page" : undefined}
-            >
-              {locale === "en" ? "Account" : "用户中心"}
-            </Link>
-          ) : null}
+          <Link
+            className="site-settings-link"
+            href="/account"
+            aria-label={locale === "en" ? "Settings" : "设置"}
+            title={locale === "en" ? "Settings" : "设置"}
+            aria-current={pathname === "/account" ? "page" : undefined}
+          >
+            <i className="bi bi-gear" aria-hidden="true" />
+          </Link>
         </nav>
       </header>
       {children}
