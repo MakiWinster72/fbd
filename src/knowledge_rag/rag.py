@@ -294,25 +294,25 @@ def _is_explicit_knowledge_base_overview(question: str) -> bool:
 
 
 def _has_document_reference(question: str) -> bool:
-    return bool(re.search(r"《|[.](?:pdf|docx)\b", question, re.IGNORECASE))
+    return bool(re.search(r"《|[.](?:pdf|docx|md|txt)\b", question, re.IGNORECASE))
 
 
 def _requested_document_names(question: str, available: list[str]) -> tuple[str, ...]:
     query = unicodedata.normalize("NFKC", question).casefold()
     names = {unicodedata.normalize("NFKC", name).casefold(): name for name in available}
     references = re.findall(r"《([^》]+)》", query)
-    references.extend(re.findall(r'["“]([^"”]+[.](?:pdf|docx))["”]', query))
-    remainder = re.sub(r'《[^》]+》|["“][^"”]+[.](?:pdf|docx)["”]', " ", query)
+    references.extend(re.findall(r'["“]([^"”]+[.](?:pdf|docx|md|txt))["”]', query))
+    remainder = re.sub(r'《[^》]+》|["“][^"”]+[.](?:pdf|docx|md|txt)["”]', " ", query)
     for name in sorted(names, key=len, reverse=True):
         pattern = r"(?<![\w.])" + re.escape(name) + r"(?![\w.])"
         if re.search(pattern, remainder):
             references.append(name)
             remainder = re.sub(pattern, " ", remainder)
-    references.extend(re.findall(r"(?<![\w.])[\w.()\-]+[.](?:pdf|docx)(?![\w.])", remainder))
+    references.extend(re.findall(r"(?<![\w.])[\w.()\-]+[.](?:pdf|docx|md|txt)(?![\w.])", remainder))
     requested: list[str] = []
     for reference in references:
         reference = reference.strip()
-        matched = [original for normalized, original in names.items() if normalized == reference or re.sub(r"[.](?:pdf|docx)$", "", normalized) == reference]
+        matched = [original for normalized, original in names.items() if normalized == reference or re.sub(r"[.](?:pdf|docx|md|txt)$", "", normalized) == reference]
         if not matched:
             return ()
         for name in matched:
@@ -343,12 +343,12 @@ def _per_file_questions(question: str, document_names: tuple[str, ...] | None) -
     # English possessives and shared/distributive clauses have ambiguous owner scope.
     if re.search(r"['’]s\b|\bof\b", body, re.IGNORECASE):
         return {}
-    if re.search(r"各|每|双方|两者|自身|共同|均|[.](?:pdf|docx)\b|\b(?:each|every|both|their|respective)\b", body, re.IGNORECASE):
+    if re.search(r"各|每|双方|两者|自身|共同|均|[.](?:pdf|docx|md|txt)\b|\b(?:each|every|both|their|respective)\b", body, re.IGNORECASE):
         return {}
     normalized_body = body.casefold()
     for name in document_names:
         normalized_name = unicodedata.normalize("NFKC", name).casefold()
-        stem = re.sub(r"[.](?:pdf|docx)$", "", normalized_name)
+        stem = re.sub(r"[.](?:pdf|docx|md|txt)$", "", normalized_name)
         # A short alias such as B的金额 is an explicit file owner, not a neutral subject.
         if normalized_name in normalized_body or len(stem) >= 4 and stem in normalized_body or f"{stem}的" in normalized_body:
             return {}

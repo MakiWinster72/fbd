@@ -23,6 +23,30 @@ def normalize_document(
     source_path = source_path.resolve()
     document_id, logical_document_id, file_hash = document_identity(source_path)
 
+    if source_path.suffix.lower() in {".md", ".txt"}:
+        raw = source_path.read_bytes()
+        encoding = "utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig"
+        try:
+            text = raw.decode(encoding).strip()
+        except UnicodeError as exc:
+            raise ValueError("MD/TXT 文件请使用 UTF-8 或带 BOM 的 UTF-16 编码") from exc
+        if "\x00" in text:
+            raise ValueError("MD/TXT 文件包含无效的二进制内容")
+        if not text:
+            raise ValueError("文档未提取出可索引内容")
+        source = "markdown" if source_path.suffix.lower() == ".md" else "plain_text"
+        # Text files have no physical pages. Use one logical page, preserving
+        # Markdown syntax (including code and tables) for the normal chunker.
+        return ParsedDocument(
+            document_id=document_id,
+            logical_document_id=logical_document_id,
+            file_name=source_path.name,
+            file_hash=file_hash,
+            page_count=1,
+            blocks=(ContentBlock(page_number=1, block_type="text", text=text, source=source),),
+            page_quality=(PageQuality(1, 0, visible_chars(text), source, "ok", False),),
+        )
+
     if source_path.suffix.lower() == ".docx":
         blocks = extract_docx_blocks(source_path)
         return ParsedDocument(

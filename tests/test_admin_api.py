@@ -1,24 +1,23 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import tempfile
+import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
-import hashlib
-import json
-import time
-
-from sqlalchemy.orm import Session
-from knowledge_rag.db import DocumentLeaseRecord, UserKnowledgeBaseRecord
-from knowledge_rag.document_import import DOCUMENT_LEASE_SCOPE
-from knowledge_rag.documents import stable_id
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from knowledge_rag.admin_store import AdminStore
 from knowledge_rag.api import create_app
 from knowledge_rag.config import Settings
+from knowledge_rag.db import DocumentLeaseRecord, UserKnowledgeBaseRecord
+from knowledge_rag.document_import import DOCUMENT_LEASE_SCOPE
+from knowledge_rag.documents import stable_id
 from knowledge_rag.rag import ChatResult, RagService
 
 
@@ -203,6 +202,17 @@ class AdminApiTests(unittest.TestCase):
             replaced = self.client.post(endpoint, data={**payload, "duplicate_mode": "replace"}, files={"file": ("a.pdf", b"data")})
             self.assertNotEqual(replaced.json()["id"], job_id)
             self.assertEqual(len(self.client.get(endpoint).json()), 2)
+
+    def test_text_upload_formats_are_accepted_without_ocr(self) -> None:
+        self.login("admin", "strong-password")
+        endpoint = "/api/v1/admin/document-imports"
+        with patch("knowledge_rag.document_import.DocumentImportManager._run", side_effect=lambda job, path, mode, lease: lease.close()):
+            for suffix in ("md", "txt", "MD", "TXT"):
+                with self.subTest(suffix=suffix):
+                    content = f"# 设备\n这是 {suffix} 上传测试。".encode()
+                    response = self.client.post(endpoint, data={"knowledge_base_id": "default"}, files={"file": (f"设备.{suffix}", content)})
+                    self.assertEqual(response.status_code, 202, response.text)
+                    self.wait_for_no_lease("default", stable_id("document", response.json()["file_hash"]))
 
     def test_failed_import_retains_file_and_retries_original_job(self) -> None:
         endpoint = "/api/v1/admin/document-imports"

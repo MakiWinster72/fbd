@@ -16,7 +16,7 @@ type IntakeFile = {
 };
 
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
-const ACCEPTED_EXTENSIONS = ["pdf", "docx"];
+const ACCEPTED_EXTENSIONS = ["pdf", "docx", "md", "txt"];
 
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -34,7 +34,7 @@ function fileId(file: File) {
 function classify(file: File): IntakeFile {
   const extension = extensionOf(file.name);
   if (!ACCEPTED_EXTENSIONS.includes(extension)) {
-    return { id: fileId(file), file, status: "blocked", reason: extension === "doc" ? "旧版 DOC 请先转换为 DOCX 或 PDF" : "当前入库流程仅支持 PDF 和 DOCX，请先转换格式" };
+    return { id: fileId(file), file, status: "blocked", reason: extension === "doc" ? "旧版 DOC 请先转换为 DOCX 或 PDF" : "当前入库流程仅支持 PDF、DOCX、MD 和 TXT，请先转换格式" };
   }
   if (file.size === 0) {
     return { id: fileId(file), file, status: "blocked", reason: "空文件无法导入" };
@@ -269,15 +269,15 @@ export default function AdminDocumentsPage() {
               onDrop={onDrop}
             >
               <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 5h14l8 8v30H14z" /><path d="M28 5v9h8M24 34V20m-6 6 6-6 6 6" /></svg>
-              <h3>{t("将 PDF 或 DOCX 放到这里")}</h3>
-              <p>{t("单个文件不超过 200 MB；其他格式请先转换为 PDF 或 DOCX。")}</p>
-              <p>{t("MinerU 可解析的格式不等于本站已支持的入库格式；后端规范化流程目前仅支持 PDF/DOCX。")}</p>
+              <h3>{t("将 PDF、DOCX、MD 或 TXT 放到这里")}</h3>
+              <p>{t("单个文件不超过 200 MB；支持 PDF、DOCX、Markdown 和纯文本。")}</p>
+              <p>{t("MD/TXT 直接读取文本，无需 MinerU；请使用 UTF-8 或带 BOM 的 UTF-16 编码。")}</p>
               <button type="button" onClick={() => inputRef.current?.click()}>{t("从电脑选择文件")}</button>
               <input
                 className="visually-hidden"
                 ref={inputRef}
                 type="file"
-                accept=".pdf,.docx,.doc"
+                accept=".pdf,.docx,.md,.txt"
                 multiple
                 onChange={(event) => {
                   if (event.target.files) addFiles(event.target.files);
@@ -338,7 +338,7 @@ export default function AdminDocumentsPage() {
           {reviewed ? <p className="intake-review-note" role="status">{t("清单检查完成。确认目标知识库和解析设置后即可导入。")}</p> : null}
           {uploadError ? <p className="admin-error" role="alert">{t(uploadError)}</p> : null}
           <button className="intake-review-button" type="button" disabled={!readyFiles.length || !knowledgeBaseId || uploading} onClick={() => setReviewed(true)}>{t("检查导入清单")}</button>
-          <button className="intake-review-button" type="button" disabled={!reviewed || !readyFiles.length || !knowledgeBaseId || !embeddingProfile || uploading || (ocrMode !== "native" && mineruStatus !== "reachable")} onClick={startImport}>{t(uploading ? "正在上传…" : "开始导入")}</button>
+          <button className="intake-review-button" type="button" disabled={!reviewed || !readyFiles.length || !knowledgeBaseId || !embeddingProfile || uploading || (readyFiles.some((item) => extensionOf(item.file.name) === "pdf") && ocrMode !== "native" && mineruStatus !== "reachable")} onClick={startImport}>{t(uploading ? "正在上传…" : "开始导入")}</button>
           <p className="intake-footnote">{t("PDF 默认通过 MinerU 解析；纯文本层模式可跳过 MinerU。任务失败会保留上传文件供原任务重试；旧任务若未保留文件，请重新选择文件上传。")}</p>
         </aside>
       </section>

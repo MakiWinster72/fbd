@@ -669,8 +669,8 @@ def create_app(
             raise HTTPException(status_code=400, detail="目标知识库不可用")
         name = Path(file.filename or "").name
         suffix = Path(name).suffix.lower()
-        if suffix not in {".pdf", ".docx"}:
-            raise HTTPException(status_code=400, detail="仅支持 PDF 和 DOCX")
+        if suffix not in {".pdf", ".docx", ".md", ".txt"}:
+            raise HTTPException(status_code=400, detail="仅支持 PDF、DOCX、MD 和 TXT")
         if not name or len(name) > 255:
             raise HTTPException(status_code=400, detail="无效文件名")
         directory = effective_settings.data_dir / "uploads"
