@@ -3065,12 +3065,40 @@
     background: #eff7f3;
     font-size: 12px;
   }
+  .account-sections {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 28px;
+    align-items: start;
+  }
   .account-section {
     display: grid;
-    grid-template-columns: minmax(140px, 0.65fr) minmax(0, 1.6fr);
-    gap: 24px;
-    padding: 20px 0;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    min-width: 0;
+    gap: 12px;
+    padding: 18px 0;
     border-top: 1px solid var(--line);
+  }
+  .account-section-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .account-section-security {
+    grid-column: 1 / -1;
+  }
+  .account-section-security form {
+    grid-template-columns: 180px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 16px;
+  }
+  .account-section-security form > label:not(:first-child) {
+    margin-top: 0;
+  }
+  .account-section-security form > button,
+  .account-section-security form > .form-error {
+    grid-column: 2;
   }
   .account-section:last-child {
     padding-bottom: 0;
@@ -3338,10 +3366,20 @@
       flex-wrap: wrap;
       gap: 16px;
     }
+    .account-sections {
+      grid-template-columns: minmax(0, 1fr);
+    }
     .account-section {
       grid-template-columns: 1fr;
       gap: 12px;
       padding: 18px 0;
+    }
+    .account-section-security form {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .account-section-security form > button,
+    .account-section-security form > .form-error {
+      grid-column: 1;
     }
     .account-page input,
     .login-form input,

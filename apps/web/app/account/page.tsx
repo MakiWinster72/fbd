@@ -200,7 +200,10 @@ export default function AccountPage() {
               ) : null}
             </div>
           </section>
-          <section className="account-section" aria-labelledby="security-title">
+          <section
+            className="account-section account-section-security"
+            aria-labelledby="security-title"
+          >
             <div className="account-section-heading">
               <span className="section-number" aria-hidden="true">
                 03
