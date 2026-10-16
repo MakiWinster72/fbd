@@ -376,7 +376,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
                 />
                 <button className="send-button" type="submit" disabled={!question.trim() || busy}>
                   <span>{t(loading ? "检索中" : "发送问题")}</span>
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
+                  <i className="bi bi-send" aria-hidden="true" />
                 </button>
               </div>
               <div className="composer-footer"><p className="composer-hint" id="composer-hint"><span className="desktop-input-hint">{t("Enter 发送 · Shift + Enter 换行")}</span><span className="touch-input-hint">{t("点击按钮发送 · 回车换行")}</span></p><span className="character-count">{question.length} / 2000</span></div>
