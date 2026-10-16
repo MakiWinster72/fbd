@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import "bootstrap-icons/font/bootstrap-icons.css";
 import "./globals.css";
 import { LanguageProvider } from "@/components/language-provider";
 

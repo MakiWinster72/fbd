@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      bootstrap-icons:
+        specifier: ^1.13.2
+        version: 1.13.2
       next:
         specifier: ^16.0.0
         version: 16.3.5(@types/node@24.13.6)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -272,6 +275,9 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
+  bootstrap-icons@1.13.2:
+    resolution: {integrity: sha512-fAU1Ly3dH7hwRg+CB8EZ0Vl0fF80zgXHeUVJyfUOKzoURr+TbwISbCW5tKUoQLERaWYG2emTCybcPbD96hdD1A==}
+
   caniuse-lite@1.0.30001810:
     resolution: {integrity: sha512-TITQPUkaz+aVk5GL6NhOdwk1aEaNTSDPsGFWrTuhKGtjTF70jL/Oht2W4c6rXUe5fu7Ie19VIahAXHIIiWWNeg==}
 
@@ -529,6 +535,8 @@ snapshots:
       csstype: 3.2.3
 
   baseline-browser-mapping@2.11.25: {}
+
+  bootstrap-icons@1.13.2: {}
 
   caniuse-lite@1.0.30001810: {}
 

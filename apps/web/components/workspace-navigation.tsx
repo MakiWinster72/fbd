@@ -8,8 +8,8 @@ import { logout, type CurrentUser, type KnowledgeBase } from "@/lib/api";
 type Props = { user: CurrentUser; knowledgeBases: KnowledgeBase[]; history: ReturnType<typeof useConversationHistory>; busy: boolean; onDelete: () => void; onNavigate: () => void; serviceState: string; statusLabel: string };
 
 function NavIcon({ kind }: { kind: "plus" | "refresh" | "chat" | "trash" | "chevron" }) {
-  const paths = { plus: "M12 5v14M5 12h14", refresh: "M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.5-1L20 9M4 15l2.4 3A7 7 0 0 0 18 17", chat: "M5 5h14v11H9l-4 3V5Z", trash: "M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7M14 10v7", chevron: "m8 10 4 4 4-4" };
-  return <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={paths[kind]} /></svg>;
+  const icons = { plus: "plus-lg", refresh: "arrow-clockwise", chat: "chat-left-text", trash: "trash3", chevron: "chevron-down" };
+  return <i aria-hidden="true" className={`workspace-nav-icon bi bi-${icons[kind]}`} />;
 }
 
 export function WorkspaceNavigation({ user, knowledgeBases, history, busy, onDelete, onNavigate, serviceState, statusLabel }: Props) {

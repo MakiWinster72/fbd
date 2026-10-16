@@ -1093,7 +1093,8 @@
     width:32px; min-width:32px; height:32px; min-height:32px;
     margin:0; padding:0; border:0; border-radius:8px; line-height:1;
   }
-  .workspace-nav-tools button svg { display:block; flex:none; width:16px; height:16px; overflow:visible; }
+  .workspace-nav-icon { display:inline-flex; align-items:center; justify-content:center; flex:none; width:16px; height:16px; font-size:16px; line-height:1; }
+  .workspace-nav-icon::before { display:block; line-height:1; }
   .workspace-navigation .workspace-nav-tools button:focus-visible { outline:2px solid #246455; outline-offset:2px; }
   .workspace-nav-history ul { list-style:none; margin:8px 0; padding:0; display:grid; gap:5px; max-height:400px; overflow:auto; }
   .workspace-nav-history li { min-width:0; }
@@ -1167,15 +1168,15 @@
     .viewport-workspace .workspace-nav-context option:checked { background:#e5eeeb; color:#245b4e; font-weight:600; }
   }
   .viewport-workspace .workspace-navigation .workspace-nav-new { min-height:38px; justify-content:flex-start; background:#e5eeeb; border:0; color:#245b4e; font-weight:600; padding:9px 12px; }
-  .viewport-workspace .workspace-nav-new svg { flex-shrink:0; }
+  .viewport-workspace .workspace-nav-new .workspace-nav-icon { flex-shrink:0; }
   .viewport-workspace .workspace-nav-heading { min-height:32px; padding-inline:8px 0; gap:8px; }
   .viewport-workspace .workspace-nav-heading h2 { font-weight:500; font-size:11px; color:#7b8b96; }
   .viewport-workspace .workspace-nav-tools .workspace-nav-danger { color:#8e5858; }
   .viewport-workspace .workspace-nav-empty { padding:28px 8px; color:#8b9aa4; text-align:center; }
-  .viewport-workspace .workspace-nav-empty svg { width:22px; height:22px; margin:auto; opacity:.6; }
+  .viewport-workspace .workspace-nav-empty .workspace-nav-icon { display:flex; width:22px; height:22px; font-size:22px; margin:auto; opacity:.6; }
   .viewport-workspace .workspace-nav-empty p { margin:8px 0 0; font-size:12px; }
   .viewport-workspace .workspace-nav-history li button { display:flex; align-items:center; min-height:38px; padding:8px; gap:8px; border-radius:6px; border:0; }
-  .viewport-workspace .workspace-nav-history li button svg { flex-shrink:0; color:#8a9b9f; }
+  .viewport-workspace .workspace-nav-history li button .workspace-nav-icon { flex-shrink:0; color:#8a9b9f; }
   .viewport-workspace .workspace-nav-title { flex:1; min-width:0; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
   .viewport-workspace .workspace-nav-history small { margin-left:auto; color:#8b9aa4; font-size:10px; }
   .viewport-workspace .workspace-account-menu { width:100%; position:relative; }
