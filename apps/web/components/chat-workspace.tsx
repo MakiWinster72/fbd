@@ -285,7 +285,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
 
   return (
     <main id="main-content" tabIndex={-1} className="workspace-shell viewport-workspace" ref={workspaceRef}>
-      <button className="workspace-nav-trigger" type="button" aria-haspopup="dialog" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(true)}>{t("打开导航")}</button>
+      <button className="workspace-nav-trigger" type="button" aria-label={t("打开导航")} title={t("打开导航")} aria-haspopup="dialog" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(true)}><i className="bi bi-list" aria-hidden="true" /></button>
 
       <div className="workspace-layout">
       <aside className="workspace-sidebar"><WorkspaceNavigation user={currentUser} knowledgeBases={knowledgeBases} history={history} busy={busy} onDelete={() => setConfirmDelete(true)} onNavigate={returnToChat} serviceState={serviceState} statusLabel={statusLabel} /></aside>
@@ -414,7 +414,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
       </section>
       </div>
       </div>
-      {navigationOpen ? <Modal className="workspace-nav-drawer" label={t("工作区导航")} onClose={() => setNavigationOpen(false)}><button className="workspace-nav-close" type="button" data-initial-focus onClick={() => setNavigationOpen(false)}>{t("关闭导航")}</button><WorkspaceNavigation user={currentUser} knowledgeBases={knowledgeBases} history={history} busy={busy} onDelete={() => { setNavigationOpen(false); setConfirmDelete(true); }} onNavigate={() => { setNavigationOpen(false); returnToChat(); }} serviceState={serviceState} statusLabel={statusLabel} /></Modal> : null}
+      {<Modal className="workspace-nav-drawer" open={navigationOpen} label={t("工作区导航")} onClose={() => setNavigationOpen(false)}><button className="workspace-nav-close" type="button" aria-label={t("关闭导航")} title={t("关闭导航")} data-initial-focus onClick={() => setNavigationOpen(false)}><i className="bi bi-arrow-right" aria-hidden="true" /></button><WorkspaceNavigation user={currentUser} knowledgeBases={knowledgeBases} history={history} busy={busy} onDelete={() => { setNavigationOpen(false); setConfirmDelete(true); }} onNavigate={() => { setNavigationOpen(false); returnToChat(); }} serviceState={serviceState} statusLabel={statusLabel} /></Modal>}
 
       {mobileEvidenceOpen ? (
         <Modal className="mobile-evidence-sheet" label={t("引用来源")} onClose={() => setMobileEvidenceOpen(false)}>
