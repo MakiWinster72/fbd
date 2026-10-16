@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 import unittest
 
 from knowledge_rag.milvus_store import MilvusChunkStore
@@ -36,6 +38,13 @@ class FakeChat:
         self.prompts: list[tuple[str, str]] = []
 
     def complete(self, system_prompt: str, user_prompt: str) -> str:
+        if system_prompt.startswith("You are an evidence auditor"):
+            payload = json.loads(user_prompt)
+            indices = {int(index) for index in re.findall(r"【(\d+)】", payload["answer"])}
+            return json.dumps({"claims": [{"text": payload["answer"], "verdict": "supported", "evidence": [
+                {"index": source["index"], "quote": source["content"]}
+                for source in payload["sources"] if source["index"] in indices
+            ]}]}, ensure_ascii=False)
         self.prompts.append((system_prompt, user_prompt))
         return self.answer
 

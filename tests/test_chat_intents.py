@@ -1,3 +1,4 @@
+import json
 import unittest
 from unittest.mock import Mock
 
@@ -36,16 +37,16 @@ class GreetingIntentTests(unittest.TestCase):
             with self.subTest(locale=locale):
                 service, embedder, store, model = make_service()
                 store.search.return_value = [{"distance": 0.7, "entity": {"content": "资料列出服务器。", "document_name": "设备清单.pdf"}}]
-                model.complete.side_effect = None
-                model.complete.return_value = "资料列出了服务器。【1】"
+                answer = "资料列出了服务器。【1】"
+                model.complete.side_effect = [answer, json.dumps({"claims": [{"text": answer, "verdict": "supported", "evidence": [{"index": 1, "quote": "资料列出服务器。"}]}]})]
                 result = service.answer(question, "current-kb", locale, history=(HistoryTurn("hi", ""),))
                 self.assertTrue(result.grounded)
                 self.assertIn("【1】", result.answer)
                 embedder.embed.assert_called_once_with([question])
-                model.complete.assert_called_once()
-                self.assertIn("检索证据", model.complete.call_args.args[1])
+                self.assertEqual(model.complete.call_count, 2)
+                self.assertIn("检索证据", model.complete.call_args_list[0].args[1])
                 if locale == "en":
-                    self.assertIn("Answer in English", model.complete.call_args.args[0])
+                    self.assertIn("Answer in English", model.complete.call_args_list[0].args[0])
 
     def test_greeting_word_inside_a_factual_question_does_not_bypass_retrieval(self) -> None:
         service, embedder, _, _ = make_service()

@@ -229,7 +229,10 @@ class ConversationsApiTests(unittest.TestCase):
         search_store.list_documents.return_value = ["预算.pdf"]
         search_store.search.return_value = [{"distance": .9, "entity": {"document_name": "预算.pdf", "document_id": "budget", "page_start": 2, "page_end": 2, "content": "项目预算120万元，负责人张三。"}}]
         standalone = "《预算.pdf》的项目负责人是谁？"
-        model.complete.side_effect = ["预算120万元【1】", json.dumps({"question": standalone}), "The project lead is Zhang San.【1】"]
+        def verified(answer: str) -> str:
+            return json.dumps({"claims": [{"text": answer, "verdict": "supported", "evidence": [{"index": 1, "quote": "项目预算120万元，负责人张三。"}]}]})
+
+        model.complete.side_effect = ["预算120万元【1】", verified("预算120万元【1】"), json.dumps({"question": standalone}), "The project lead is Zhang San.【1】", verified("The project lead is Zhang San.【1】")]
         service = RagService(embedder, search_store, model)
         with patch("knowledge_rag.api.get_rag_service", return_value=service):
             first = self.client.post("/api/v1/chat", json={"question": "《预算.pdf》的项目预算？", "conversation_id": identifier})
@@ -242,7 +245,7 @@ class ConversationsApiTests(unittest.TestCase):
                 self.assertEqual(second.status_code, 200, second.text)
                 self.assertTrue(second.json()["grounded"])
         self.assertEqual(embedder.embed.call_args.args[0], [standalone])
-        resolver = json.loads(model.complete.call_args_list[1].args[1])
+        resolver = json.loads(model.complete.call_args_list[2].args[1])
         self.assertEqual(resolver["history"], [{"question": "《预算.pdf》的项目预算？", "answer": "预算120万元【1】"}])
         self.assertEqual(self.detail(identifier)["conversation"]["turn_count"], 2)
         self.assertEqual(self.detail(identifier)["turns"][-1]["question"], "那负责人呢？")

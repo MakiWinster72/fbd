@@ -29,7 +29,17 @@ def make_service(responses: list[str], *, hits: bool = True):
         "content": "项目预算120万元，负责人张三。", "section_title": "预算",
     }}] if hits else []
     model = Mock()
-    model.complete.side_effect = responses
+    replies = iter(responses)
+
+    def complete(system_prompt: str, user_prompt: str) -> str:
+        if system_prompt.startswith("You are an evidence auditor"):
+            payload = json.loads(user_prompt)
+            return json.dumps({"claims": [{"text": payload["answer"], "verdict": "supported", "evidence": [
+                {"index": source["index"], "quote": source["content"]} for source in payload["sources"]
+            ]}]})
+        return next(replies)
+
+    model.complete.side_effect = complete
     return RagService(embedder, store, model), embedder, store, model
 
 
@@ -46,7 +56,7 @@ class MultiTurnTests(unittest.TestCase):
         service, embedder, _, model = make_service(["预算120万元【1】"])
         self.assertTrue(service.answer("预算是什么？", "default").grounded)
         embedder.embed.assert_called_once_with(["预算是什么？"])
-        self.assertEqual(model.complete.call_count, 1)
+        self.assertEqual(model.complete.call_count, 2)
 
     def test_followup_is_resolved_before_retrieval_and_history_is_not_evidence(self) -> None:
         standalone = "《预算.pdf》第2页的项目负责人是谁？"
@@ -146,7 +156,7 @@ class MultiTurnTests(unittest.TestCase):
             HistoryTurn("List the documents", "1. 《人员.pdf》\n2. 《预算.pdf》"),
         ))
         self.assertEqual(result.answer, "The budget is 1.2 million.【1】")
-        self.assertEqual(model.complete.call_count, 2)
+        self.assertEqual(model.complete.call_count, 3)
         embedder.embed.assert_called_once_with([standalone])
 
     def test_only_explicit_inventory_queries_take_shortcut(self) -> None:
@@ -166,7 +176,7 @@ class MultiTurnTests(unittest.TestCase):
         self.assertTrue(result.grounded)
         embedder.embed.assert_called_once_with([question])
         self.assertEqual(store.search.call_args.kwargs["document_names"], ("预算.pdf",))
-        self.assertIn("Answer in English", model.complete.call_args_list[-1].args[0])
+        self.assertIn("Answer in English", model.complete.call_args_list[-2].args[0])
         self.assertNotIn("旧答案", model.complete.call_args_list[-1].args[1])
 
     def test_inventory_does_not_need_rewrite_or_old_answers(self) -> None:

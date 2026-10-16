@@ -8,6 +8,12 @@ from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 from knowledge_rag.conversation_context import HistoryTurn, resolve_question
+from knowledge_rag.evidence_validation import (
+    VERIFICATION_PROMPT,
+    citation_indices,
+    validate_verdict,
+    verification_payload,
+)
 
 
 class Embedder(Protocol):
@@ -249,7 +255,33 @@ class RagService:
         if not re.search(r"【\d+】", answer) or answer.strip().lstrip("#* ").casefold().startswith((REFUSAL_ZH.rstrip("。"), REFUSAL_EN.rstrip(".").casefold())):
             # Retrieved candidates alone do not make a refusal or an uncited answer grounded.
             return ChatResult(REFUSAL_EN if english else REFUSAL_ZH, False, ())
-        return ChatResult(answer=answer, grounded=True, sources=sources)
+        # A valid marker is not proof of entailment. Audit only the sources actually
+        # cited, then allow one repair; never return unchecked facts as grounded.
+        for attempt in range(2):
+            indices = citation_indices(answer)
+            cited = tuple(source for source in sources if source.index in indices)
+            contents = {source.index: source.content for source in cited}
+            try:
+                verdict = self.chat_model.complete(VERIFICATION_PROMPT, verification_payload(answer, contents))
+                if validate_verdict(answer, contents, verdict):
+                    return ChatResult(answer=answer, grounded=True, sources=cited)
+            except Exception:
+                logger.warning("Evidence verification failed; refusing unchecked answer", exc_info=True)
+                return ChatResult(REFUSAL_EN if english else REFUSAL_ZH, False, ())
+            if attempt == 0:
+                try:
+                    answer = self.chat_model.complete(
+                        system_prompt,
+                        prompt + "\n\n上一版回答未通过逐项证据核验。请重新作答，仅保留能由对应引用直接支持的事实；"
+                        "检查主体、金额、单位和设备名称，不要保留无依据的结论或无关引用。证据不足时拒答。",
+                    )
+                    answer = _remove_invalid_citations(answer, len(sources))
+                    if not citation_indices(answer) or answer.strip().lstrip("#* ").casefold().startswith((REFUSAL_ZH.rstrip("。"), REFUSAL_EN.rstrip(".").casefold())):
+                        break
+                except Exception:
+                    logger.warning("Evidence repair failed; refusing unchecked answer", exc_info=True)
+                    break
+        return ChatResult(REFUSAL_EN if english else REFUSAL_ZH, False, ())
 
 
 def _is_explicit_knowledge_base_overview(question: str) -> bool:
