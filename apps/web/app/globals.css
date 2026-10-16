@@ -3020,9 +3020,9 @@
     background: #edf5f2;
   }
   .account-page {
-    max-width: 1040px;
-    padding: 36px 40px;
-    margin: 32px auto;
+    max-width: 880px;
+    padding: 24px 28px;
+    margin: 20px auto;
     background: white;
     border: 1px solid #dce4e9;
     border-radius: 16px;
@@ -3031,8 +3031,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 24px;
-    margin-bottom: 20px;
+    gap: 16px;
+    margin-bottom: 16px;
   }
   .account-header > div {
     min-width: 0;
@@ -3058,9 +3058,9 @@
   }
   .account-section {
     display: grid;
-    grid-template-columns: minmax(180px, 1fr) minmax(0, 1.6fr);
-    gap: 48px;
-    padding: 30px 0;
+    grid-template-columns: minmax(140px, 0.65fr) minmax(0, 1.6fr);
+    gap: 24px;
+    padding: 20px 0;
     border-top: 1px solid var(--line);
   }
   .account-section:last-child {
@@ -3071,7 +3071,7 @@
     font: 12px var(--mono);
   }
   .account-page h2 {
-    margin: 10px 0;
+    margin: 6px 0;
     padding: 0;
     border: 0;
     color: var(--archive-blue);
@@ -3089,7 +3089,7 @@
   }
   .account-page dl {
     grid-template-columns: 100px minmax(0, 1fr);
-    margin: 0 0 20px;
+    margin: 0 0 12px;
   }
   .account-page dt {
     color: #627380;
@@ -3100,10 +3100,10 @@
   }
   .account-page form {
     margin: 0;
-    gap: 10px;
+    gap: 8px;
   }
   .account-page form > label:not(:first-child) {
-    margin-top: 8px;
+    margin-top: 4px;
   }
   .account-page input {
     background: #f8fafb;
@@ -3130,6 +3130,10 @@
     margin: 0;
     font-size: 12px;
     color: var(--blueprint-dark);
+  }
+  .account-form-footer p:empty,
+  .language-preference p:empty {
+    display: none;
   }
   .language-preference {
     display: grid;
@@ -3318,7 +3322,7 @@
     }
     .account-page {
       margin: 12px;
-      padding: 24px 20px;
+      padding: 18px 16px;
     }
     .account-header {
       align-items: flex-start;
@@ -3327,8 +3331,8 @@
     }
     .account-section {
       grid-template-columns: 1fr;
-      gap: 22px;
-      padding: 26px 0;
+      gap: 12px;
+      padding: 18px 0;
     }
     .account-page input,
     .login-form input,
