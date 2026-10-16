@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   getCurrentUser,
+  logout,
   updateAccountProfile,
   changeAccountPassword,
   type CurrentUser,
@@ -18,7 +19,7 @@ export default function AccountPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const [busy, setBusy] = useState<"name" | "password" | null>(null);
+  const [busy, setBusy] = useState<"name" | "password" | "logout" | null>(null);
   const [notice, setNotice] = useState("");
   const en = locale === "en";
   useEffect(() => {
@@ -286,6 +287,40 @@ export default function AccountPage() {
         </div>
       ) : !error ? (
         <p role="status">{en ? "Loading…" : "加载中…"}</p>
+      ) : null}
+      {user ? (
+        <footer className="account-session-footer">
+          {error === "logout" ? (
+            <p className="form-error" role="alert">
+              {en ? "Sign out failed. Please retry." : "退出失败，请重试。"}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            disabled={Boolean(busy)}
+            onClick={async () => {
+              if (busy) return;
+              setBusy("logout");
+              setError("");
+              try {
+                await logout();
+                window.location.replace("/login");
+              } catch {
+                setError("logout");
+                setBusy(null);
+              }
+            }}
+          >
+            <i className="bi bi-box-arrow-right" aria-hidden="true" />
+            {busy === "logout"
+              ? en
+                ? "Signing out…"
+                : "正在退出…"
+              : en
+                ? "Sign out"
+                : "退出登录"}
+          </button>
+        </footer>
       ) : null}
     </main>
   );

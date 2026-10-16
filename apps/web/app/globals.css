@@ -3174,6 +3174,30 @@
     min-height: 44px;
     font-size: 13px;
   }
+  .account-session-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .account-page .account-session-footer button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 0;
+    padding: 10px 16px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--blueprint-dark);
+  }
+  .account-page .account-session-footer button:hover:not(:disabled) {
+    background: #e5eeeb;
+  }
   .account-form-footer {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
