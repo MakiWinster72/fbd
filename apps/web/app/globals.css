@@ -3039,7 +3039,7 @@
   .account-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: 16px;
     margin-bottom: 16px;
   }
@@ -3172,7 +3172,12 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
     gap: 16px;
+  }
+  .account-page button[type="submit"] {
+    justify-self: end;
+    margin-left: auto;
   }
   .account-form-footer p,
   .language-preference p {
@@ -3950,7 +3955,7 @@
     font-size: 14px;
     line-height: 1.5;
   }
-  .viewport-workspace .workspace-nav-context select {
+  :is(.viewport-workspace .workspace-nav-context, .language-preference) select {
     appearance: none;
     min-height: 44px;
     padding: 10px 36px 10px 12px;
@@ -3968,31 +3973,31 @@
     cursor: pointer;
     box-shadow: 0 1px 2px #172c4305;
   }
-  .viewport-workspace .workspace-nav-context select:hover {
+  :is(.viewport-workspace .workspace-nav-context, .language-preference) select:hover {
     border-color: #9db8ac;
     background-color: #fbfdfc;
   }
-  .viewport-workspace .workspace-nav-context select:focus-visible {
+  :is(.viewport-workspace .workspace-nav-context, .language-preference) select:focus-visible {
     outline: 2px solid #246455;
     outline-offset: 3px;
   }
-  .viewport-workspace .workspace-nav-context option {
+  :is(.viewport-workspace .workspace-nav-context, .language-preference) option {
     background: #fff;
     color: #263f50;
   }
   @supports (appearance: base-select) {
-    .viewport-workspace .workspace-nav-context select,
-    .viewport-workspace .workspace-nav-context select::picker(select) {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference) select,
+    :is(.viewport-workspace .workspace-nav-context, .language-preference) select::picker(select) {
       appearance: base-select;
     }
-    .viewport-workspace .workspace-nav-context select {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference) select {
       background-image: none;
       padding-right: 12px;
     }
-    .viewport-workspace .workspace-nav-context select::picker-icon {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference) select::picker-icon {
       color: #60786e;
     }
-    .viewport-workspace .workspace-nav-context select::picker(select) {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference) select::picker(select) {
       margin-top: 6px;
       padding: 5px;
       border: 1px solid #d5e0dc;
@@ -4000,17 +4005,17 @@
       background: #fff;
       box-shadow: 0 10px 28px #172c4318;
     }
-    .viewport-workspace .workspace-nav-context option {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference) option {
       min-height: 40px;
       padding: 9px 10px;
       border-radius: 7px;
       font-size: 13px;
     }
-    .viewport-workspace .workspace-nav-context option:hover,
-    .viewport-workspace .workspace-nav-context option:focus {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference) option:hover,
+    :is(.viewport-workspace .workspace-nav-context, .language-preference) option:focus {
       background: #f0f5f2;
     }
-    .viewport-workspace .workspace-nav-context option:checked {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference) option:checked {
       background: #e5eeeb;
       color: #245b4e;
       font-weight: 600;
