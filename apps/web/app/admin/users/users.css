@@ -1,0 +1,122 @@
+.user-directory-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 20px 0;
+}
+.user-directory-filters label {
+  display: grid;
+  gap: 5px;
+  min-width: 170px;
+  color: var(--graphite);
+}
+.user-directory-filters label:first-child {
+  flex: 1;
+}
+.user-directory-filters input,
+.user-directory-filters select,
+.user-management-modal input,
+.user-management-modal select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: white;
+  color: var(--graphite);
+}
+.user-directory {
+  overflow-x: auto;
+}
+.user-directory-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.user-directory-table th,
+.user-directory-table td {
+  padding: 15px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.user-directory-table th {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.user-directory-self {
+  display: block;
+  color: var(--muted);
+}
+.user-directory-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.user-directory-actions button,
+.user-dialog-actions button {
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: white;
+  color: var(--graphite);
+}
+.user-directory-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.user-directory-mobile {
+  display: none;
+}
+.user-management-modal {
+  width: min(540px, calc(100vw - 32px));
+  overflow-y: auto;
+}
+.user-management-modal form {
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+}
+.user-management-modal form > label {
+  display: grid;
+  gap: 6px;
+}
+.user-management-modal h2 {
+  margin: 0;
+}
+.user-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.user-dialog-actions .primary {
+  background: var(--archive-blue);
+  color: white;
+}
+@media (max-width: 760px) {
+  .user-directory-table {
+    display: none;
+  }
+  .user-directory-mobile {
+    display: grid;
+    gap: 12px;
+  }
+  .user-directory-card {
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+  }
+  .user-directory-card header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .user-directory-card header small {
+    display: block;
+  }
+  .user-directory-filters label,
+  .user-directory-filters label:first-child {
+    flex: 1 1 100%;
+  }
+}

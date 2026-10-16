@@ -204,6 +204,7 @@ export function WorkspaceNavigation({
             <a href="/account">{t("用户中心")}</a>
             {user.role === "admin" ? (
               <div className="workspace-nav-admin" aria-label={t("管理导航")}>
+                <a href="/admin/users">{t("用户管理")}</a>
                 <a href="/admin/documents">{t("文件导入")}</a>
                 <a href="/admin/models">{t("管理后台")}</a>
               </div>
