@@ -3142,6 +3142,18 @@
   .account-page form > label:not(:first-child) {
     margin-top: 4px;
   }
+  .account-page .account-profile-form {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 12px;
+  }
+  .account-profile-form > input {
+    min-width: 0;
+  }
+  .account-profile-form > .form-error,
+  .account-profile-form > .account-form-footer {
+    grid-column: 1 / -1;
+  }
   .account-page input {
     background: #f8fafb;
     min-height: 46px;

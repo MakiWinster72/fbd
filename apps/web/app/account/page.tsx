@@ -83,6 +83,7 @@ export default function AccountPage() {
                 <dd>{user.username}</dd>
               </dl>
               <form
+                className="account-profile-form"
                 aria-busy={busy === "name"}
                 onSubmit={async (event) => {
                   event.preventDefault();
