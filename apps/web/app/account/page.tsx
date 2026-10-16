@@ -45,23 +45,7 @@ export default function AccountPage() {
   return (
     <main id="main-content" tabIndex={-1} className="account-page">
       <header className="account-header">
-        <div>
-          <p className="section-kicker">
-            {en ? "ACCOUNT SETTINGS" : "账号设置"}
-          </p>
-          <h1>{en ? "User center" : "用户中心"}</h1>
-        </div>
-        {user ? (
-          <span className="account-role">
-            {user.role === "admin"
-              ? en
-                ? "Administrator"
-                : "管理员"
-              : en
-                ? "Member"
-                : "普通用户"}
-          </span>
-        ) : null}
+        <h1>{en ? "User center" : "用户中心"}</h1>
       </header>
       {error === "load" ? (
         <p className="form-error" role="alert">
