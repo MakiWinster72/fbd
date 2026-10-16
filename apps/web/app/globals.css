@@ -3217,14 +3217,36 @@
   }
   @media (max-width: 760px) {
     .site-masthead {
-      padding: 16px;
-      flex-wrap: wrap;
-      gap: 12px;
+      padding: 12px 16px;
+      flex-wrap: nowrap;
+      gap: 8px;
+    }
+    .site-identity {
+      min-width: 0;
+      gap: 8px;
+    }
+    .site-identity > span:last-child {
+      min-width: 0;
+    }
+    .site-identity strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 14px;
+    }
+    .site-identity small {
+      display: none;
+    }
+    .site-monogram {
+      width: 34px;
+      height: 34px;
+      font-size: 24px;
     }
     .site-navigation {
-      width: 100%;
+      width: auto;
       justify-content: flex-end;
-      gap: 6px;
+      gap: 4px;
+      white-space: nowrap;
     }
     .site-navigation a {
       font-size: 12px;
