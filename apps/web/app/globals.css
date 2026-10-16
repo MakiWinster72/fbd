@@ -1142,7 +1142,8 @@
   .viewport-workspace .composer-footer { margin-top:4px; }
   .viewport-workspace .composer-zone > .quick-questions { max-width:680px; margin-inline:auto; }
   .viewport-workspace .evidence-heading { min-height:76px; display:flex; align-items:center; padding:12px 24px; }
-  .viewport-workspace .evidence-heading .source-count { margin-left:auto; }
+  .viewport-workspace .evidence-heading .source-count { margin-left:0; }
+  .viewport-workspace .evidence-heading .workspace-return-chat { margin-left:auto; flex-shrink:0; }
   .viewport-workspace .evidence-list { min-height:0; max-height:none; overflow:auto; overscroll-behavior:contain; position:relative; }
   .viewport-workspace .evidence-footnote { padding:12px 24px; }
   .viewport-workspace .workspace-navigation { height:100%; min-height:0; padding:16px 12px 10px; gap:22px; color:#263f50; }

@@ -390,8 +390,8 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
               <p className="section-kicker">{t("引用证据")}</p>
               <h2>{t("引用来源")}</h2>
             </div>
-            <button className="workspace-return-chat" type="button" onClick={returnToChat}>{t("返回对话")}</button>
             <span className="source-count">{String(latestSources.length).padStart(2, "0")}</span>
+            <button className="workspace-return-chat" type="button" onClick={returnToChat}>{t("返回对话")}</button>
           </div>
 
           <div className="evidence-list" ref={evidenceListRef}>
