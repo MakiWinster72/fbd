@@ -185,13 +185,31 @@ function SourceCards({
 export function ChatWorkspace({
   currentUser,
   knowledgeBases,
+  assistantIconUrl,
 }: {
   currentUser: CurrentUser;
   knowledgeBases: KnowledgeBase[];
+  assistantIconUrl?: string;
 }) {
   const { t, locale } = useLanguage();
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [question, setQuestion] = useState("");
+  const [iconFailed, setIconFailed] = useState(false);
+  const assistantLabel =
+    assistantIconUrl && !iconFailed ? (
+      // A plain image supports runtime URLs without Next.js remote image configuration.
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        className="assistant-icon"
+        src={assistantIconUrl}
+        alt={t("资料助手")}
+        width={28}
+        height={28}
+        onError={() => setIconFailed(true)}
+      />
+    ) : (
+      t("资料助手")
+    );
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -448,9 +466,9 @@ export function ChatWorkspace({
                     key={message.id}
                   >
                     <div className="message-label">
-                      {t(
-                        message.role === "assistant" ? "资料助手" : "你的问题",
-                      )}
+                      {message.role === "assistant"
+                        ? assistantLabel
+                        : t("你的问题")}
                     </div>
                     <div className="message-body">
                       {message.role === "assistant" ? (
@@ -482,7 +500,7 @@ export function ChatWorkspace({
 
                 {loading ? (
                   <article className="message assistant loading-message">
-                    <div className="message-label">{t("资料助手")}</div>
+                    <div className="message-label">{assistantLabel}</div>
                     <div className="message-body">
                       <div className="search-progress">
                         <span />
