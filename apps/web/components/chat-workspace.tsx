@@ -559,9 +559,10 @@ export function ChatWorkspace({
                     <button
                       className="send-button"
                       type="submit"
+                      aria-label={t(loading ? "检索中" : "发送问题")}
+                      title={t(loading ? "检索中" : "发送问题")}
                       disabled={!question.trim() || busy}
                     >
-                      <span>{t(loading ? "检索中" : "发送问题")}</span>
                       <i className="bi bi-send" aria-hidden="true" />
                     </button>
                   </div>
