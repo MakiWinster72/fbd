@@ -46,7 +46,7 @@ const english: Record<string, string> = {
   "登录失败": "Sign-in failed",
   "使用管理员分配的账号登录。模型凭据和知识库配置仅在管理员后台维护。": "Sign in with the account provided by your administrator. Model credentials and knowledge bases are managed in the admin area.",
   "用户名": "Username", "密码": "Password", "正在登录…": "Signing in…", "登录知识库": "Sign in",
-  "请询问已入库文档中的事实、制度或流程。我会严格依据资料回答，并标出原始文件和页码。": "Ask about facts, policies, or procedures in your documents. Answers are grounded in the archive, with file and page references.",
+  "请在左侧选择对应的 '知识库', 然后进行提问。我会严格依据资料回答，并标出原始文件和页码。": "Select the appropriate knowledge base on the left, then ask a question. Answers are grounded in the archive, with file and page references.",
   "这批资料的核心内容是什么？": "What are the key points in these documents?",
   "文档中有哪些重要时间节点？": "What important dates do the documents mention?",
   "相关制度规定了哪些流程？": "What procedures do the relevant policies describe?",

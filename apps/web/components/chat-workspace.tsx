@@ -28,7 +28,7 @@ const INITIAL_MESSAGE: Message = {
   id: "welcome",
   role: "assistant",
   content:
-    "请询问已入库文档中的事实、制度或流程。我会严格依据资料回答，并标出原始文件和页码。",
+    "请在左侧选择对应的 '知识库', 然后进行提问。我会严格依据资料回答，并标出原始文件和页码。",
 };
 
 const QUICK_QUESTIONS = [
