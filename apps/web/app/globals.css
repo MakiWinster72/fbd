@@ -3169,11 +3169,21 @@
     font-size: 13px;
   }
   .account-form-footer {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 16px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 12px;
+  }
+  .account-form-footer > button {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .account-form-footer > p {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    align-self: center;
+    overflow-wrap: anywhere;
   }
   .account-page button[type="submit"] {
     justify-self: end;
