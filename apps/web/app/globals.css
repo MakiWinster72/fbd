@@ -3876,12 +3876,23 @@
     white-space: nowrap;
     border: 0;
   }
+  .composer-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .composer-expand {
+    display: none;
+  }
   .viewport-workspace .composer-row {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     align-items: center;
   }
   .viewport-workspace .composer textarea {
+    resize: vertical;
+    max-height: 50dvh;
+    min-width: 0;
     min-height: 44px;
     padding: 8px 4px;
     font-size: 16px;
@@ -3983,11 +3994,13 @@
     cursor: pointer;
     box-shadow: 0 1px 2px #172c4305;
   }
-  :is(.viewport-workspace .workspace-nav-context, .language-preference) select:hover {
+  :is(.viewport-workspace .workspace-nav-context, .language-preference)
+    select:hover {
     border-color: #9db8ac;
     background-color: #fbfdfc;
   }
-  :is(.viewport-workspace .workspace-nav-context, .language-preference) select:focus-visible {
+  :is(.viewport-workspace .workspace-nav-context, .language-preference)
+    select:focus-visible {
     outline: 2px solid #246455;
     outline-offset: 3px;
   }
@@ -3996,18 +4009,23 @@
     color: #263f50;
   }
   @supports (appearance: base-select) {
-    :is(.viewport-workspace .workspace-nav-context, .language-preference) select,
-    :is(.viewport-workspace .workspace-nav-context, .language-preference) select::picker(select) {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference)
+      select,
+    :is(.viewport-workspace .workspace-nav-context, .language-preference)
+      select::picker(select) {
       appearance: base-select;
     }
-    :is(.viewport-workspace .workspace-nav-context, .language-preference) select {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference)
+      select {
       background-image: none;
       padding-right: 12px;
     }
-    :is(.viewport-workspace .workspace-nav-context, .language-preference) select::picker-icon {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference)
+      select::picker-icon {
       color: #60786e;
     }
-    :is(.viewport-workspace .workspace-nav-context, .language-preference) select::picker(select) {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference)
+      select::picker(select) {
       margin-top: 6px;
       padding: 5px;
       border: 1px solid #d5e0dc;
@@ -4015,17 +4033,21 @@
       background: #fff;
       box-shadow: 0 10px 28px #172c4318;
     }
-    :is(.viewport-workspace .workspace-nav-context, .language-preference) option {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference)
+      option {
       min-height: 40px;
       padding: 9px 10px;
       border-radius: 7px;
       font-size: 13px;
     }
-    :is(.viewport-workspace .workspace-nav-context, .language-preference) option:hover,
-    :is(.viewport-workspace .workspace-nav-context, .language-preference) option:focus {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference)
+      option:hover,
+    :is(.viewport-workspace .workspace-nav-context, .language-preference)
+      option:focus {
       background: #f0f5f2;
     }
-    :is(.viewport-workspace .workspace-nav-context, .language-preference) option:checked {
+    :is(.viewport-workspace .workspace-nav-context, .language-preference)
+      option:checked {
       background: #e5eeeb;
       color: #245b4e;
       font-weight: 600;
@@ -4259,6 +4281,45 @@
     }
     .composer-footer {
       display: none;
+    }
+    .composer-expand {
+      display: grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--blueprint-dark);
+      font-size: 18px;
+      cursor: pointer;
+    }
+    .composer-expand:focus-visible {
+      outline: 2px solid var(--blueprint);
+      outline-offset: 2px;
+    }
+    .viewport-workspace .composer textarea {
+      resize: none;
+    }
+    .viewport-workspace .composer[data-expanded="true"] {
+      height: 50dvh;
+      display: flex;
+      flex-direction: column;
+    }
+    .viewport-workspace .composer[data-expanded="true"] .composer-row {
+      flex: 1;
+      min-height: 0;
+      align-items: stretch;
+    }
+    .viewport-workspace .composer[data-expanded="true"] textarea {
+      height: 100%;
+      max-height: none;
+      min-height: 0;
+    }
+    .viewport-workspace .composer[data-expanded="true"] .composer-actions {
+      flex-direction: column;
+      justify-content: space-between;
     }
     .viewport-workspace .evidence-panel {
       padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));

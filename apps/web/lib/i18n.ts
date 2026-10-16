@@ -61,6 +61,7 @@ const english: Record<string, string> = {
   "示例问题": "Suggested questions", "本次请求未完成": "Request not completed",
   "请检查管理后台当前启用的对话模型协议、接口地址及连接测试结果；重排序失败会自动降级，不会阻止回答。": "Check the active chat model, endpoint, and connection test in the admin area. Reranking errors fall back automatically and do not block answers.",
   "向资料库提问": "Ask the archive", "例如：相关制度规定了哪些流程？": "For example: What procedures do the policies describe?",
+  "收起输入框": "Collapse editor", "展开为半屏": "Expand to half screen",
   "检索中": "Searching", "发送问题": "Send question", "Enter 发送 · Shift + Enter 换行": "Enter to send · Shift + Enter for a new line",
   "答案的依据会显示在这里": "Evidence for the answer appears here", "提问后可查看文件名、页码、相关度和命中的原文片段。": "Ask a question to see file names, page numbers, relevance, and matching excerpts.",
   "引用内容来自自动解析结果。金额、人名和设备型号等关键信息应结合原始页面复核。": "Citations come from automated parsing. Verify amounts, names, and equipment models against the original pages.",

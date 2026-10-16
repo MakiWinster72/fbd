@@ -192,6 +192,7 @@ export function ChatWorkspace({
   const { t, locale } = useLanguage();
   const [messages, setMessages] = useState<Message[]>([INITIAL_MESSAGE]);
   const [question, setQuestion] = useState("");
+  const [composerExpanded, setComposerExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [serviceState, setServiceState] = useState<ServiceState>("checking");
@@ -541,7 +542,11 @@ export function ChatWorkspace({
                     </span>
                   </div>
                 ) : null}
-                <form className="composer" onSubmit={onSubmit}>
+                <form
+                  className="composer"
+                  data-expanded={composerExpanded}
+                  onSubmit={onSubmit}
+                >
                   <label htmlFor="question">{t("向资料库提问")}</label>
                   <div className="composer-row">
                     <textarea
@@ -556,15 +561,37 @@ export function ChatWorkspace({
                       maxLength={2000}
                       disabled={busy}
                     />
-                    <button
-                      className="send-button"
-                      type="submit"
-                      aria-label={t(loading ? "检索中" : "发送问题")}
-                      title={t(loading ? "检索中" : "发送问题")}
-                      disabled={!question.trim() || busy}
-                    >
-                      <i className="bi bi-send" aria-hidden="true" />
-                    </button>
+                    <div className="composer-actions">
+                      <button
+                        className="composer-expand"
+                        type="button"
+                        aria-label={t(
+                          composerExpanded ? "收起输入框" : "展开为半屏",
+                        )}
+                        title={t(
+                          composerExpanded ? "收起输入框" : "展开为半屏",
+                        )}
+                        aria-expanded={composerExpanded}
+                        aria-controls="question"
+                        onClick={() =>
+                          setComposerExpanded((expanded) => !expanded)
+                        }
+                      >
+                        <i
+                          className={`bi bi-${composerExpanded ? "fullscreen-exit" : "arrows-fullscreen"}`}
+                          aria-hidden="true"
+                        />
+                      </button>
+                      <button
+                        className="send-button"
+                        type="submit"
+                        aria-label={t(loading ? "检索中" : "发送问题")}
+                        title={t(loading ? "检索中" : "发送问题")}
+                        disabled={!question.trim() || busy}
+                      >
+                        <i className="bi bi-send" aria-hidden="true" />
+                      </button>
+                    </div>
                   </div>
                   <div className="composer-footer">
                     <p className="composer-hint" id="composer-hint">
