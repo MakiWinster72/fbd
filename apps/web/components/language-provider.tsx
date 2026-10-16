@@ -95,23 +95,25 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
             </small>
           </span>
         </Link>
-        <nav
-          className="site-navigation"
-          aria-label={locale === "en" ? "Site navigation" : "网站导航"}
-        >
-          <Link href="/" aria-current={pathname === "/" ? "page" : undefined}>
-            {locale === "en" ? "Workspace" : "工作台"}
-          </Link>
-          <Link
-            className="site-settings-link"
-            href="/account"
-            aria-label={locale === "en" ? "Settings" : "设置"}
-            title={locale === "en" ? "Settings" : "设置"}
-            aria-current={pathname === "/account" ? "page" : undefined}
+        {pathname !== "/login" ? (
+          <nav
+            className="site-navigation"
+            aria-label={locale === "en" ? "Site navigation" : "网站导航"}
           >
-            <i className="bi bi-gear" aria-hidden="true" />
-          </Link>
-        </nav>
+            <Link href="/" aria-current={pathname === "/" ? "page" : undefined}>
+              {locale === "en" ? "Workspace" : "工作台"}
+            </Link>
+            <Link
+              className="site-settings-link"
+              href="/account"
+              aria-label={locale === "en" ? "Settings" : "设置"}
+              title={locale === "en" ? "Settings" : "设置"}
+              aria-current={pathname === "/account" ? "page" : undefined}
+            >
+              <i className="bi bi-gear" aria-hidden="true" />
+            </Link>
+          </nav>
+        ) : null}
       </header>
       {children}
     </LanguageContext.Provider>
