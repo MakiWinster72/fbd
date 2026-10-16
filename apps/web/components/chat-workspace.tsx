@@ -370,7 +370,7 @@ export function ChatWorkspace({ currentUser, knowledgeBases }: { currentUser: Cu
                   onChange={(event) => setQuestion(event.target.value)}
                   onKeyDown={onKeyDown}
                   placeholder={t("例如：相关制度规定了哪些流程？")}
-                  rows={2}
+                  rows={1}
                   maxLength={2000}
                   disabled={busy}
                 />
