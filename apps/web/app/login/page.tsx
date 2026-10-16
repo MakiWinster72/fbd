@@ -69,10 +69,15 @@ export default function LoginPage() {
               <button
                 type="button"
                 aria-controls="login-password"
+                aria-label={t(showPassword ? "隐藏密码" : "显示密码")}
+                title={t(showPassword ? "隐藏密码" : "显示密码")}
                 aria-pressed={showPassword}
                 onClick={() => setShowPassword((value) => !value)}
               >
-                {t(showPassword ? "隐藏密码" : "显示密码")}
+                <i
+                  className={`bi ${showPassword ? "bi-eye-slash" : "bi-eye"}`}
+                  aria-hidden="true"
+                />
               </button>
             </div>
           </div>
