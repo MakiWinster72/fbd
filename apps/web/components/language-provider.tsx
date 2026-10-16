@@ -53,12 +53,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
         <nav className="site-navigation" aria-label={locale === "en" ? "Site navigation" : "网站导航"}>
           <Link href="/" aria-current={pathname === "/" ? "page" : undefined}>{locale === "en" ? "Workspace" : "工作台"}</Link>
           {pathname !== "/" ? <Link href="/account" aria-current={pathname === "/account" ? "page" : undefined}>{locale === "en" ? "Account" : "用户中心"}</Link> : null}
-          <button className="language-switch" type="button" disabled={saving} onClick={() => { void changeLocale(locale === "zh-CN" ? "en" : "zh-CN").catch(() => {}); }} aria-label={locale === "en" ? "Change language" : "切换语言"}>
-            {saving ? (locale === "en" ? "Saving…" : "保存中…") : (locale === "en" ? "English" : "中文")}<span aria-hidden="true"> ⇄</span>
-          </button>
         </nav>
       </header>
-      {error ? <p className="site-language-error" role="alert">{locale === "en" ? "Language could not be saved. Please retry." : "语言保存失败，请重试。"}</p> : null}
       {children}
     </LanguageContext.Provider>
   );

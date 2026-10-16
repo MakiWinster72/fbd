@@ -5,7 +5,7 @@ import { getCurrentUser, updateAccountProfile, changeAccountPassword, type Curre
 import { useLanguage } from "@/components/language-provider";
 
 export default function AccountPage() {
-  const { locale, changeLocale, saving } = useLanguage();
+  const { locale, changeLocale, saving, error: languageError } = useLanguage();
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -62,6 +62,7 @@ export default function AccountPage() {
             void changeLocale(next).then(() => setSaved(true)).catch(() => {});
           }}><option value="zh-CN">{en ? "Simplified Chinese" : "简体中文"}</option><option value="en">{en ? "English" : "英语"}</option></select>
           <p role="status">{saving ? (en ? "Saving…" : "保存中…") : saved ? (en ? "Saved" : "已保存") : ""}</p>
+          {languageError ? <p className="form-error" role="alert">{en ? "Language could not be saved. Please retry." : "语言保存失败，请重试。"}</p> : null}
         </div>
       </section>
       <section className="account-section" aria-labelledby="security-title">
