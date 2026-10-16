@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useLanguage } from "@/components/language-provider";
 import { useConversationHistory } from "@/components/use-conversation-history";
 import { logout, type CurrentUser, type KnowledgeBase } from "@/lib/api";
@@ -15,10 +15,22 @@ function NavIcon({ kind }: { kind: "plus" | "refresh" | "chat" | "trash" | "chev
 export function WorkspaceNavigation({ user, knowledgeBases, history, busy, onDelete, onNavigate, serviceState, statusLabel }: Props) {
   const { t } = useLanguage();
   const knowledgeBaseControlId = useId();
+  const accountMenuRef = useRef<HTMLDetailsElement>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [logoutError, setLogoutError] = useState(false);
   const items = history.active && !history.items.some(item => item.id === history.active?.id) ? [history.active, ...history.items] : history.items;
   const disabled = busy || signingOut;
+
+  useEffect(() => {
+    const dismissOutside = (event: PointerEvent) => {
+      const menu = accountMenuRef.current;
+      if (menu?.open && event.target instanceof Node && !menu.contains(event.target)) {
+        menu.open = false;
+      }
+    };
+    document.addEventListener("pointerdown", dismissOutside, true);
+    return () => document.removeEventListener("pointerdown", dismissOutside, true);
+  }, []);
 
   return <nav className="workspace-navigation" aria-label={t("工作区导航")}>
     <section className="workspace-nav-context">
@@ -43,7 +55,7 @@ export function WorkspaceNavigation({ user, knowledgeBases, history, busy, onDel
     </section> : null}
 
     <section className="workspace-nav-account">
-      <details className="workspace-account-menu">
+      <details ref={accountMenuRef} className="workspace-account-menu">
         <summary><span className="workspace-account-avatar" aria-hidden="true">{user.display_name.slice(0, 1).toUpperCase()}</span><span className="workspace-account-name"><strong>{user.display_name}</strong><span>{t("用户中心")}</span></span><NavIcon kind="chevron" /></summary>
         <div className="workspace-account-options">
           <a href="/account">{t("用户中心")}</a>

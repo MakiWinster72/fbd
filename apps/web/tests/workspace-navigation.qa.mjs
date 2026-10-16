@@ -10,6 +10,14 @@ function probe(js) { const output = evaluate(`JSON.stringify(${js})`); return JS
 const base = process.env.QA_BASE_URL || 'http://127.0.0.1:3100';
 assert.match(base, /^http:\/\/127\.0\.0\.1:3100$/);
 const results = [];
+function checkAccountDismissal(menu, outside) {
+  ab('click', `${menu} summary`);
+  assert.equal(probe(`document.querySelector(${JSON.stringify(menu)}).open`), true);
+  evaluate(`document.querySelector(${JSON.stringify(`${menu} .workspace-account-options`)}).dispatchEvent(new PointerEvent('pointerdown', {bubbles:true, pointerType:'touch'}))`);
+  assert.equal(probe(`document.querySelector(${JSON.stringify(menu)}).open`), true, 'An inside pointer must not dismiss the account menu');
+  ab('click', outside);
+  assert.equal(probe(`document.querySelector(${JSON.stringify(menu)}).open`), false, 'An outside pointer must dismiss the account menu');
+}
 try {
   ab('open', 'about:blank');
   const mock = (path, body) => ab('network', 'route', `**/rag-api${path}`, '--body', JSON.stringify(body));
@@ -37,6 +45,7 @@ try {
   ab('wait','.workspace-sidebar .workspace-nav-history li button');
   const row = probe(`(() => {const b=document.querySelector('.workspace-sidebar .workspace-nav-history li button');const rect=b.getBoundingClientRect();const parts=[...b.children].map(n=>n.getBoundingClientRect());return {height:rect.height,aligned:parts.every(r=>Math.abs((r.top+r.bottom)/2-(rect.top+rect.bottom)/2)<3)};})()`);
   assert.ok(row.height <= 44 && row.aligned,'History icon, title and count must share one compact row');
+  checkAccountDismissal('.workspace-sidebar .workspace-account-menu', '.conversation-heading h1');
   ab('set','viewport','360','800');
   ab('click','.workspace-nav-trigger');
   ab('wait','dialog[open]');
@@ -55,6 +64,8 @@ try {
   ab('click','.workspace-nav-trigger');
   ab('wait', '--fn', "document.getAnimations().every(animation => animation.playState === 'finished')");
   ab('screenshot',`${dir}/mobile.png`);
+  checkAccountDismissal('dialog .workspace-account-menu', 'dialog .workspace-nav-heading h2');
+  assert.equal(probe(`!!document.querySelector('dialog[open]')`), true, 'Dismissing the account menu must not close the navigation drawer');
   ab('click','dialog .workspace-nav-history li button');
   ab('wait','--fn', "!document.querySelector('dialog[open]')");
   assert.ok(ab('get','url').includes('conversation=qa-history'));
