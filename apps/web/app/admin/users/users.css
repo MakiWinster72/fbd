@@ -1,13 +1,13 @@
 .user-directory-filters {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin: 20px 0;
 }
 .user-directory-filters label {
   display: grid;
   gap: 5px;
-  min-width: 170px;
+  min-width: 0;
   color: var(--graphite);
 }
 .user-directory-filters label:first-child {
@@ -15,22 +15,38 @@
 }
 .user-directory-filters input,
 .user-directory-filters select,
-.user-management-modal input,
+.user-management-modal input:not([type="checkbox"]),
 .user-management-modal select {
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 10px;
   background: white;
   color: var(--graphite);
 }
+.user-management > *,
+.user-management .admin-header > *,
+.user-directory-card header > * {
+  min-width: 0;
+}
+.user-management .admin-header > div {
+  flex: 1 1 320px;
+}
+.user-management .admin-header .primary-action {
+  flex-shrink: 0;
+}
 .user-directory {
-  overflow-x: auto;
+  min-width: 0;
+}
+.user-directory-table td,
+.user-directory-card {
+  overflow-wrap: anywhere;
 }
 .user-directory-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   text-align: left;
 }
 .user-directory-table th,
@@ -38,6 +54,13 @@
   padding: 15px 12px;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
+}
+.user-directory-table th:last-child {
+  width: 28%;
+}
+.user-directory-table th:nth-child(3),
+.user-directory-table th:nth-child(4) {
+  width: 10%;
 }
 .user-directory-table th {
   font-size: 12px;
@@ -56,6 +79,8 @@
 .user-directory-actions button,
 .user-dialog-actions button {
   cursor: pointer;
+  min-height: 44px;
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 10px;
@@ -71,7 +96,9 @@
 }
 .user-management-modal {
   width: min(540px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
   overflow-y: auto;
+  overflow-wrap: anywhere;
 }
 .user-management-modal form {
   display: grid;
@@ -85,8 +112,32 @@
 .user-management-modal h2 {
   margin: 0;
 }
+.user-management-modal .create-access-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.user-management-modal .create-access-fieldset label {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+.user-management-modal input[type="checkbox"] {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--archive-blue);
+}
 .user-dialog-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
 }
@@ -94,7 +145,7 @@
   background: var(--archive-blue);
   color: white;
 }
-@media (max-width: 760px) {
+@media (max-width: 1024px) {
   .user-directory-table {
     display: none;
   }
@@ -115,8 +166,48 @@
   .user-directory-card header small {
     display: block;
   }
-  .user-directory-filters label,
-  .user-directory-filters label:first-child {
-    flex: 1 1 100%;
+  .user-directory-card header .user-status {
+    flex-shrink: 0;
+    align-self: flex-start;
+    white-space: nowrap;
   }
+  .user-directory-card strong,
+  .user-directory-card small {
+    overflow-wrap: anywhere;
+  }
+  .user-directory-actions button {
+    flex: 1 1 120px;
+  }
+}
+@media (max-width: 600px) {
+  .user-management.admin-shell {
+    width: calc(100% - 24px);
+    margin: 16px auto;
+  }
+  .user-management .profile-section {
+    padding: 20px 16px;
+  }
+  .user-management .admin-header .primary-action {
+    width: 100%;
+  }
+  .user-directory-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .user-directory-filters label:first-child {
+    grid-column: 1 / -1;
+  }
+  .user-directory-card {
+    padding: 14px;
+  }
+  .user-management-modal form {
+    padding: 20px 16px;
+  }
+  .user-dialog-actions button {
+    flex: 1 1 100px;
+  }
+}
+.user-directory-actions button:focus-visible,
+.user-dialog-actions button:focus-visible {
+  outline: 2px solid var(--archive-blue);
+  outline-offset: 2px;
 }

@@ -25,8 +25,8 @@ const admin = {
 const member = {
   ...admin,
   id: "qa-user",
-  username: "alice",
-  display_name: "Alice",
+  username: "alice_" + "longusername".repeat(12),
+  display_name: "Alice" + "长名称响应式验收".repeat(18),
   role: "user",
   knowledge_base_ids: ["qa-base"],
 };
@@ -114,7 +114,7 @@ try {
     ),
     true,
   );
-  for (const width of [1440, 390, 360]) {
+  for (const width of [1440, 1024, 820, 768, 390, 360, 320]) {
     ab("set", "viewport", String(width), "900");
     assert.equal(
       probe("document.documentElement.scrollWidth > innerWidth"),
@@ -125,11 +125,61 @@ try {
       probe(
         "getComputedStyle(document.querySelector('.user-directory-mobile')).display !== 'none'",
       ),
-      width <= 760,
+      width <= 1024,
+      `Use readable user cards at ${width}px`,
+    );
+    assert.equal(
+      probe(
+        "[...document.querySelectorAll('.user-directory-actions button')].filter(x=>x.getBoundingClientRect().width).every(x=>x.getBoundingClientRect().height >= 44)",
+      ),
+      true,
+      `Actions need 44px touch targets at ${width}px`,
+    );
+    assert.equal(
+      probe(
+        "[...document.querySelectorAll('.user-directory-card')].filter(x=>x.getBoundingClientRect().width).every(x=>x.scrollWidth <= x.clientWidth)",
+      ),
+      true,
+      `Long names must wrap within user cards at ${width}px`,
     );
   }
+  ab("click", ".user-directory-card:last-child button:first-child");
+  ab("wait", "dialog[open]");
+  assert.equal(
+    probe(
+      "document.querySelector('dialog').scrollWidth <= document.querySelector('dialog').clientWidth",
+    ),
+    true,
+    "Mobile dialog must not overflow",
+  );
+  ab(
+    "wait",
+    "--fn",
+    "document.querySelector('dialog').getAnimations().every(x=>x.playState === 'finished')",
+  );
+  assert.equal(
+    probe(
+      "document.querySelector('dialog input[type=checkbox]').getBoundingClientRect().width <= 24",
+    ),
+    true,
+    "Checkbox must not stretch across the authorization row",
+  );
+  ab("screenshot", "/tmp/knowledge-admin-users-mobile-dialog.png");
+  ab("press", "Escape");
+  assert.equal(
+    probe(
+      "[...document.querySelectorAll('.user-directory-card .user-status')].every(x=>x.getBoundingClientRect().height < 40)",
+    ),
+    true,
+    "Status labels must not collapse into vertical text",
+  );
+  evaluate("window.scrollTo(0, 0)");
+  ab("screenshot", "/tmp/knowledge-admin-users-mobile.png");
+  ab("set", "viewport", "1440", "900");
+  evaluate("window.scrollTo(0, 0)");
+  ab("screenshot", "/tmp/knowledge-admin-users-desktop.png");
   console.log(
-    "PASS: directory loading, search, role filter, authorization draft reset, failed mutation, self-disable guard, desktop/mobile layout",
+    "PASS: directory loading, search, role filter, authorization draft reset, failed mutation, self-disable guard, desktop/tablet/mobile layout and mobile dialog",
   );
 } finally {
   ab("close");
