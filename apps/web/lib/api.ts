@@ -157,13 +157,35 @@ export function fetchHealth(): Promise<HealthResponse> {
   return apiRequest("/health");
 }
 
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+// Share concurrent checks (page, navigation, locale), never a settled identity.
+// Server-side requests must not share authentication across different visitors.
+let currentUserRequest: Promise<CurrentUser | null> | null = null;
+
+async function requestCurrentUser(): Promise<CurrentUser | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
-    return await apiRequest<CurrentUser>("/api/v1/auth/me");
+    return await apiRequest<CurrentUser>("/api/v1/auth/me", {
+      signal: controller.signal,
+    });
   } catch (error) {
+    if (controller.signal.aborted)
+      throw new Error("验证登录状态超时，请重试");
     if (error instanceof Error && error.message === "请先登录") return null;
     throw error;
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+export function getCurrentUser(): Promise<CurrentUser | null> {
+  if (typeof window === "undefined") return requestCurrentUser();
+  if (!currentUserRequest) {
+    currentUserRequest = requestCurrentUser().finally(() => {
+      currentUserRequest = null;
+    });
+  }
+  return currentUserRequest;
 }
 
 export function updateAccountProfile(display_name: string): Promise<CurrentUser> {

@@ -21,6 +21,7 @@ export default function AdminUsersPage() {
   const { t } = useLanguage();
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [authError, setAuthError] = useState("");
+  const [authAttempt, setAuthAttempt] = useState(0);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [usersStatus, setUsersStatus] = useState<LoadStatus>("loading");
@@ -58,6 +59,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     let active = true;
+    setAuthError("");
     getCurrentUser()
       .then((user) => {
         if (!active) return;
@@ -74,7 +76,7 @@ export default function AdminUsersPage() {
     return () => {
       active = false;
     };
-  }, [loadUsers, loadBases]);
+  }, [loadUsers, loadBases, authAttempt]);
 
   const visibleUsers = useMemo(() => {
     const keyword = query.trim().toLocaleLowerCase();
@@ -90,10 +92,21 @@ export default function AdminUsersPage() {
   if (!currentUser)
     return (
       <main id="main-content" tabIndex={-1} className="auth-status">
-        <span className="auth-spinner" />
-        <p role={authError ? "alert" : undefined}>
+        {!authError ? (
+          <span className="auth-spinner" aria-hidden="true" />
+        ) : null}
+        <p role={authError ? "alert" : "status"}>
           {t(authError || "正在验证管理员权限…")}
         </p>
+        {authError ? (
+          <button
+            className="primary-action"
+            type="button"
+            onClick={() => setAuthAttempt((value) => value + 1)}
+          >
+            {t("重试")}
+          </button>
+        ) : null}
       </main>
     );
 
@@ -220,7 +233,9 @@ export default function AdminUsersPage() {
           basesReady={basesStatus === "ready"}
           onClose={() => setDialog(null)}
           onNotice={setNotice}
-          onCreated={(user: AdminUser) => setUsers((current) => [...current, user])}
+          onCreated={(user: AdminUser) =>
+            setUsers((current) => [...current, user])
+          }
           onUpdated={(user: AdminUser) =>
             setUsers((current) =>
               current.map((item) => (item.id === user.id ? user : item)),

@@ -40,6 +40,7 @@ const english: Record<string, string> = {
   "模型配置不存在": "Model profile not found", "索引任务不存在": "Index job not found",
   "无法连接认证服务": "Could not connect to the authentication service",
   "正在验证登录状态…": "Checking your sign-in status…",
+  "验证登录状态超时，请重试": "Sign-in verification timed out. Please retry.",
   "尚未分配知识库": "No knowledge base assigned",
   "当前账号可以登录，但没有任何知识库访问权限。请联系管理员完成授权。": "Your account can sign in, but has no access to a knowledge base. Contact an administrator.",
   "退出当前账号": "Sign out",
