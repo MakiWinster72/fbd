@@ -53,7 +53,7 @@ try {
   );
   // All mutations are handled in-browser. Never forward synthetic writes to a backend.
   evaluate(
-    `window.__qaWrites = []; window.fetch = ((original) => async (input, init) => { if (init?.method && init.method !== 'GET') { window.__qaWrites.push({url:String(input), ...init}); return new Response(JSON.stringify({detail:'QA mutation rejected'}), {status:503, headers:{'Content-Type':'application/json'}}); } return original(input, init); })(window.fetch.bind(window));`,
+    `window.__qaWrites = []; window.fetch = ((original) => async (input, init) => { if (init?.method && init.method !== 'GET') { window.__qaWrites.push({url:String(input), ...init}); return new Response(JSON.stringify({detail:window.__qaValidation ? [{loc:['body','knowledge_base_ids'],msg:'Invalid knowledge base'}] : 'QA mutation rejected'}), {status:window.__qaValidation ? 422 : 503, headers:{'Content-Type':'application/json'}}); } return original(input, init); })(window.fetch.bind(window));`,
   );
   ab("fill", "input[type=search]", "alice");
   assert.equal(
@@ -98,6 +98,11 @@ try {
   ab("wait", "dialog [role=alert]");
   assert.equal(probe("window.__qaWrites.length"), 1);
   assert.equal(probe("!!document.querySelector('dialog[open]')"), true);
+  evaluate("window.__qaValidation = true");
+  ab("click", "dialog button[type=submit]");
+  ab("wait", "--fn", "document.querySelector('dialog [role=alert]')?.textContent.includes('knowledge_base_ids: Invalid knowledge base')");
+  assert.equal(probe("window.__qaWrites.length"), 2);
+  assert.equal(probe("document.querySelector('dialog [role=alert]').textContent.includes('[object Object]')"), false);
   ab("press", "Escape");
   ab("click", "input[type=search]");
   ab("press", "Control+a");

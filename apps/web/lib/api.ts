@@ -111,6 +111,43 @@ export type IndexJob = {
   updated_at: string;
 };
 
+class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+function errorMessage(detail: unknown, status: number): string {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail.flatMap((issue: unknown) => {
+      if (
+        !issue ||
+        typeof issue !== "object" ||
+        !("msg" in issue) ||
+        typeof issue.msg !== "string" ||
+        !issue.msg.trim()
+      ) return [];
+      const location =
+        "loc" in issue && Array.isArray(issue.loc)
+          ? issue.loc.filter((part: unknown) =>
+              (typeof part === "string" || typeof part === "number") &&
+              part !== "body" && part !== "query" && part !== "path",
+            )
+          : [];
+      return [
+        location.length ? `${location.join(".")}: ${issue.msg}` : issue.msg,
+      ];
+    });
+    if (messages.length) return messages.join("；");
+  }
+  return `服务返回 ${status}`;
+}
+
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/rag-api${path}`, {
     credentials: "include",
@@ -123,7 +160,10 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
-    throw new Error(payload?.detail ?? `服务返回 ${response.status}`);
+    throw new ApiError(
+      errorMessage(payload?.detail, response.status),
+      response.status,
+    );
   }
   if (response.status === 204) return undefined as T;
   return response.json();
@@ -171,7 +211,7 @@ async function requestCurrentUser(): Promise<CurrentUser | null> {
   } catch (error) {
     if (controller.signal.aborted)
       throw new Error("验证登录状态超时，请重试");
-    if (error instanceof Error && error.message === "请先登录") return null;
+    if (error instanceof ApiError && error.status === 401) return null;
     throw error;
   } finally {
     clearTimeout(timeout);
