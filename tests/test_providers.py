@@ -26,6 +26,16 @@ def profile(protocol: str) -> ModelProfile:
 
 
 class ChatConnectionTests(unittest.TestCase):
+    def test_chat_request_has_bounded_configurable_timeout(self) -> None:
+        from knowledge_rag.providers import OpenAICompatibleChatModel
+
+        for options, expected in [({}, 60), ({"timeout": 25}, 25)]:
+            with self.subTest(options=options):
+                chat = OpenAICompatibleChatModel(replace(profile("openai_compatible"), purpose="chat", options=options))
+                chat._post = Mock(return_value={"choices": [{"message": {"content": "OK"}}]})
+                self.assertEqual(chat.complete("system", "question"), "OK")
+                self.assertEqual(chat._post.call_args.kwargs["timeout"], expected)
+
     def test_connection_sample_does_not_expose_reasoning(self) -> None:
         from knowledge_rag.providers import test_profile
 

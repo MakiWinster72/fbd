@@ -90,7 +90,8 @@ class OpenAICompatibleChatModel(OpenAICompatibleClient):
         for key in ("temperature", "max_tokens", "top_p"):
             if key in self.options:
                 payload[key] = self.options[key]
-        response = self._post("/chat/completions", payload)
+        # Bound each generation, including the otherwise invisible evidence audit.
+        response = self._post("/chat/completions", payload, timeout=max(1, int(self.options.get("timeout", 60))))
         choices = response.get("choices") or []
         content = choices[0].get("message", {}).get("content", "").strip() if choices else ""
         if not content:

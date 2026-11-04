@@ -525,6 +525,8 @@ def create_app(
                 result = await run_in_threadpool(service.answer, payload.question, payload.knowledge_base_id, payload.locale, context)
             else:
                 result = await run_in_threadpool(service.answer, payload.question, payload.knowledge_base_id, payload.locale)
+        except TimeoutError as exc:
+            raise HTTPException(status_code=504, detail="模型回答或证据核验超时，请稍后重试") from exc
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Chat failed") from exc
         response = ChatResponse(

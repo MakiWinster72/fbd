@@ -265,6 +265,10 @@ class RagService:
                 verdict = self.chat_model.complete(VERIFICATION_PROMPT, verification_payload(answer, contents))
                 if validate_verdict(answer, contents, verdict):
                     return ChatResult(answer=answer, grounded=True, sources=cited)
+            except TimeoutError:
+                # Infrastructure failure is not evidence that the knowledge base
+                # lacks an answer. Let the API report it without saving a refusal.
+                raise
             except Exception:
                 logger.warning("Evidence verification failed; refusing unchecked answer", exc_info=True)
                 return ChatResult(REFUSAL_EN if english else REFUSAL_ZH, False, ())
@@ -278,6 +282,8 @@ class RagService:
                     answer = _remove_invalid_citations(answer, len(sources))
                     if not citation_indices(answer) or answer.strip().lstrip("#* ").casefold().startswith((REFUSAL_ZH.rstrip("。"), REFUSAL_EN.rstrip(".").casefold())):
                         break
+                except TimeoutError:
+                    raise
                 except Exception:
                     logger.warning("Evidence repair failed; refusing unchecked answer", exc_info=True)
                     break

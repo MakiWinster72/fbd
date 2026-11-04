@@ -120,6 +120,16 @@ class EvidenceValidationTests(unittest.TestCase):
 
         self.assertFalse(self.service(BrokenAuditor()).answer("资产？", "default").grounded)
 
+    def test_verifier_timeout_is_not_reported_as_missing_evidence(self) -> None:
+        class SlowAuditor(FakeChat):
+            def complete(self, system_prompt: str, user_prompt: str) -> str:
+                if system_prompt == VERIFICATION_PROMPT:
+                    raise TimeoutError("The read operation timed out")
+                return super().complete(system_prompt, user_prompt)
+
+        with self.assertRaises(TimeoutError):
+            self.service(SlowAuditor()).answer("科研项目？", "default")
+
     def test_only_verified_citations_are_returned(self) -> None:
         result = self.service(FakeChat("科研项目见材料【1】。"), extra=True).answer("科研项目？", "default")
         self.assertTrue(result.grounded)
