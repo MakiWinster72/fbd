@@ -36,6 +36,26 @@ class ChatConnectionTests(unittest.TestCase):
                 self.assertEqual(chat.complete("system", "question"), "OK")
                 self.assertEqual(chat._post.call_args.kwargs["timeout"], expected)
 
+    def test_siliconflow_audit_defaults_to_non_thinking_without_affecting_generation(self) -> None:
+        from knowledge_rag.evidence_validation import VERIFICATION_PROMPT
+        from knowledge_rag.providers import OpenAICompatibleChatModel
+
+        for url, options, prompt, expected in [
+            ("https://api.siliconflow.cn/v1", {}, VERIFICATION_PROMPT, False),
+            ("https://api.siliconflow.cn/v1", {"enable_thinking": True}, VERIFICATION_PROMPT, True),
+            ("https://api.siliconflow.cn/v1", {}, "ordinary generation", None),
+            ("https://example.com/v1", {}, VERIFICATION_PROMPT, None),
+        ]:
+            with self.subTest(url=url, options=options, prompt=prompt[:20]):
+                chat = OpenAICompatibleChatModel(replace(profile("openai_compatible"), purpose="chat", base_url=url, options=options))
+                chat._post = Mock(return_value={"choices": [{"message": {"content": "OK"}}]})
+                chat.complete(prompt, "question")
+                payload = chat._post.call_args.args[1]
+                if expected is None:
+                    self.assertNotIn("enable_thinking", payload)
+                else:
+                    self.assertIs(payload["enable_thinking"], expected)
+
     def test_connection_sample_does_not_expose_reasoning(self) -> None:
         from knowledge_rag.providers import test_profile
 

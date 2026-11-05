@@ -78,6 +78,7 @@ SYSTEM_PROMPT = """你是私有文档知识库助手。
 6. 回答使用简体中文，先给结论，再给必要说明。
 7. 每个事实只引用直接支持它的最少证据。同一事实重复出现且高排名证据已足够时，不要追加重复引用；不能因片段字段相似就引用，项目编号等标识必须精确匹配。
 8. 用户请求整库或多份资料概览时，明确说明仅概括本轮检索证据，不得声称已经阅读或覆盖所有文档。
+9. 概述句、分类总结和结尾中的事实也必须附上直接支持它的引用；没有证据就省略，不要添加无依据的介绍或延伸。
 """
 
 SYSTEM_PROMPT_EN = """You are an assistant for a private document knowledge base.
@@ -90,6 +91,7 @@ Follow these rules strictly:
 6. Answer in English. Give the conclusion first, followed by necessary details.
 7. Cite the minimum evidence that directly supports each fact. When higher-ranked evidence already suffices for a repeated fact, do not add duplicate citations. Similar fields alone do not justify a citation; project codes and other identifiers must match exactly.
 8. For an overview of the knowledge base or multiple documents, explicitly limit the summary to this request's retrieved evidence; do not claim to have read or covered all documents.
+9. Cite factual opening summaries, category descriptions and conclusions too; omit unsupported introductions or extensions.
 """
 
 
@@ -242,12 +244,13 @@ class RagService:
                 grounded=False,
                 sources=(),
             )
-        evidence = "\n\n".join(
-            f"【{source.index}】文件：《{source.document_name}》；页码：{_page_label(source)}"
+        evidence_texts = {
+            source.index: f"文件：《{source.document_name}》；页码：{_page_label(source)}"
             + (f"；章节：{source.section_title}" if source.section_title else "")
             + f"\n{source.content}"
             for source in sources
-        )
+        }
+        evidence = "\n\n".join(f"【{source.index}】{evidence_texts[source.index]}" for source in sources)
         prompt = f"问题：{question}\n用户本轮原话：{original_question}\n问题和消解后的指代仅用于定位主题，不是事实证据。\n\n检索证据：\n{evidence}"
         system_prompt = SYSTEM_PROMPT_EN if english else SYSTEM_PROMPT
         answer = self.chat_model.complete(system_prompt, prompt)
@@ -260,7 +263,9 @@ class RagService:
         for attempt in range(2):
             indices = citation_indices(answer)
             cited = tuple(source for source in sources if source.index in indices)
-            contents = {source.index: source.content for source in cited}
+            # Audit the same evidence shown to the answer writer, including
+            # trusted document/page metadata; filenames are otherwise unverifiable.
+            contents = {source.index: evidence_texts[source.index] for source in cited}
             try:
                 verdict = self.chat_model.complete(VERIFICATION_PROMPT, verification_payload(answer, contents))
                 if validate_verdict(answer, contents, verdict):
@@ -295,6 +300,7 @@ def _is_explicit_knowledge_base_overview(question: str) -> bool:
     normalized = unicodedata.normalize("NFKC", question).strip().casefold().rstrip(".!?。！？")
     return normalized in {
         "知识库中写了什么", "知识库里写了什么", "当前知识库主要讲什么", "当前知识库的核心内容是什么",
+        "这些资料大概讲了些什么内容", "这些资料主要讲什么", "这些文档主要讲什么",
         "what is in this knowledge base", "what does this knowledge base contain",
     }
 

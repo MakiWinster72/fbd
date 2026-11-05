@@ -4,7 +4,11 @@ import json
 import unittest
 from unittest.mock import Mock
 
-from knowledge_rag.evidence_validation import VERIFICATION_PROMPT, validate_verdict
+from knowledge_rag.evidence_validation import (
+    VERIFICATION_PROMPT,
+    validate_verdict,
+    verification_payload,
+)
 from knowledge_rag.rag import REFUSAL_ZH, RagService
 
 
@@ -31,6 +35,49 @@ class EvidenceValidationTests(unittest.TestCase):
 
     def verdict(self, **changes: object) -> str:
         return json.dumps({"claims": [{**self.claim, **changes}]}, ensure_ascii=False)
+
+    def test_indexed_audit_preserves_text_without_model_copying(self) -> None:
+        answer = "## 资产\n\n固定资产867.23万元【1】。\n\n项目预算120万元【2】。"
+        sources = {1: "固定资产总值867.23万元。", 2: "项目预算120万元。"}
+        payload = json.loads(verification_payload(answer, sources))
+        self.assertEqual("".join(c["text"] for c in payload["claims"]), answer)
+        verdict = {"claims": [
+            {"id": c["id"], "verdict": "supported", "evidence": [{"index": i, "passage": 0} for i in c["citations"]]}
+            for c in payload["claims"]
+        ]}
+        self.assertTrue(validate_verdict(answer, sources, json.dumps(verdict)))
+        for change in ("missing", "duplicate", "wrong_passage", "wrong_source", "boolean_id", "unsupported"):
+            bad = json.loads(json.dumps(verdict))
+            if change == "missing":
+                bad["claims"].pop()
+            elif change == "duplicate":
+                bad["claims"].append(bad["claims"][0])
+            elif change == "wrong_passage":
+                bad["claims"][0]["evidence"][0]["passage"] = 999
+            elif change == "wrong_source":
+                bad["claims"][0]["evidence"][0]["index"] = 2
+            elif change == "boolean_id":
+                bad["claims"][0]["id"] = False
+            else:
+                bad["claims"][0]["verdict"] = "unsupported"
+            with self.subTest(change=change):
+                self.assertFalse(validate_verdict(answer, sources, json.dumps(bad)))
+
+    def test_indexed_payload_preserves_all_answer_and_source_characters(self) -> None:
+        content = "第一行\n" + "资料甲。" * 250 + "\n最后一行"
+        for answer in ["", "无引用", "标题\n\n结论【1】。\n\n", "甲【1】。\n \n乙【1】。\n尾注", "\n\n甲【1】。\n"]:
+            with self.subTest(answer=answer):
+                payload = json.loads(verification_payload(answer, {1: content}))
+                self.assertEqual("".join(c["text"] for c in payload["claims"]), answer)
+                passages = payload["sources"][0]["passages"]
+                self.assertEqual("".join(p["text"] for p in passages), content)
+                self.assertEqual([p["id"] for p in passages], list(range(len(passages))))
+
+    def test_indexed_audit_rejects_uncited_claim_and_missing_evidence(self) -> None:
+        for answer, evidence in [("没有引用的事实。", [{"index": 1, "passage": 0}]), ("事实【1】。", [])]:
+            verdict = json.dumps({"claims": [{"id": 0, "verdict": "supported", "evidence": evidence}]})
+            with self.subTest(answer=answer):
+                self.assertFalse(validate_verdict(answer, {1: "事实。"}, verdict))
 
     def test_valid_quote_and_full_coverage(self) -> None:
         self.assertTrue(validate_verdict(self.answer, self.sources, self.verdict()))
@@ -129,6 +176,19 @@ class EvidenceValidationTests(unittest.TestCase):
 
         with self.assertRaises(TimeoutError):
             self.service(SlowAuditor()).answer("科研项目？", "default")
+
+    def test_auditor_receives_same_document_metadata_as_generator(self) -> None:
+        class MetadataAuditor(FakeChat):
+            def complete(self, system_prompt: str, user_prompt: str) -> str:
+                if system_prompt == VERIFICATION_PROMPT:
+                    payload = json.loads(user_prompt)
+                    evidence = payload["sources"][0]
+                    assert "文件：《" in evidence["content"]
+                    assert "；页码：" in evidence["content"]
+                    assert "".join(p["text"] for p in evidence["passages"]) == evidence["content"]
+                return super().complete(system_prompt, user_prompt)
+
+        self.assertTrue(self.service(MetadataAuditor("科研项目见材料【1】。")).answer("科研项目？", "default").grounded)
 
     def test_only_verified_citations_are_returned(self) -> None:
         result = self.service(FakeChat("科研项目见材料【1】。"), extra=True).answer("科研项目？", "default")

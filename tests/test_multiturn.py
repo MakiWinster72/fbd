@@ -52,6 +52,15 @@ class MultiTurnTests(unittest.TestCase):
         self.assertEqual(sum(len(t.question) + len(t.answer) for t in recent), MAX_CONTEXT_CHARS)
         self.assertEqual(len(bounded_history([HistoryTurn(str(i), "") for i in range(20)])), MAX_CONTEXT_TURNS)
 
+    def test_collection_overview_does_not_require_a_prior_subject(self) -> None:
+        for question in ("这些资料大概讲了些什么内容？", "这些资料主要讲什么？", "这些文档主要讲什么？"):
+            with self.subTest(question=question):
+                service, embedder, _, model = make_service(["资料包含项目预算120万元【1】。"])
+                result = service.answer(question, "default", history=(HistoryTurn("hi", "你好！"),))
+                self.assertTrue(result.grounded)
+                embedder.embed.assert_called_once_with([question])
+                self.assertEqual(model.complete.call_count, 2)
+
     def test_no_history_is_compatible_and_does_not_rewrite(self) -> None:
         service, embedder, _, model = make_service(["预算120万元【1】"])
         self.assertTrue(service.answer("预算是什么？", "default").grounded)

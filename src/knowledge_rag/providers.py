@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from knowledge_rag.admin_store import ModelProfile
+from knowledge_rag.evidence_validation import VERIFICATION_PROMPT
 from knowledge_rag.models import Chunk
 from knowledge_rag.ollama import OllamaChatModel, OllamaEmbedder
 
@@ -87,7 +88,12 @@ class OpenAICompatibleChatModel(OpenAICompatibleClient):
             ],
             "stream": False,
         }
-        for key in ("temperature", "max_tokens", "top_p"):
+        # SiliconFlow reasoning models otherwise spend a long time thinking
+        # during the strict JSON audit, while the UI cannot display an answer.
+        # Keep this provider-specific and retain all local evidence checks.
+        if (urlsplit(self.base_url).hostname or "").lower() == "api.siliconflow.cn" and system_prompt == VERIFICATION_PROMPT:
+            payload["enable_thinking"] = False
+        for key in ("temperature", "max_tokens", "top_p", "enable_thinking", "thinking_budget", "reasoning_effort"):
             if key in self.options:
                 payload[key] = self.options[key]
         # Bound each generation, including the otherwise invisible evidence audit.
