@@ -30,8 +30,8 @@
 .user-directory-card header > * {
   min-width: 0;
 }
-.user-management .admin-header > div {
-  flex: 1 1 320px;
+.user-management .page-heading-copy {
+  flex: 1 1 280px;
 }
 .user-management .admin-header .primary-action {
   flex-shrink: 0;
@@ -180,10 +180,6 @@
   }
 }
 @media (max-width: 600px) {
-  .user-management.admin-shell {
-    width: calc(100% - 24px);
-    margin: 16px auto;
-  }
   .user-management .profile-section {
     padding: 20px 16px;
   }

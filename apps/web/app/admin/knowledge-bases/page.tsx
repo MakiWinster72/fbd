@@ -2,7 +2,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { Modal } from "@/components/modal";
-import { AdminNav } from "@/components/admin-nav";
+import { AdminPage } from "../../../components/admin-page";
 import { useLanguage } from "@/components/language-provider";
 import { deleteKnowledgeBase, createKnowledgeBase, getCurrentUser, listAdminKnowledgeBases, type KnowledgeBase } from "@/lib/api";
 
@@ -39,8 +39,7 @@ export default function KnowledgeBasesPage() {
     } catch (reason) { setError(reason instanceof Error && reason.message.includes("标识已存在") ? "duplicate" : "create"); }
     finally { setBusy(false); }
   }
-  return <main id="main-content" className="admin-page kb-page">
-    <header className="admin-header"><div><h1>{en ? "Knowledge bases" : "知识库管理"}</h1><p>{en ? "Create a workspace, then upload documents and grant access." : "先创建知识库，再导入资料并分配用户权限。"}</p></div><AdminNav /></header>
+  return <AdminPage className="kb-page" title={en ? "Knowledge bases" : "知识库管理"} description={en ? "Create a workspace, then upload documents and grant access." : "先创建知识库，再导入资料并分配用户权限。"}>
     {error ? <p className="form-error" role="alert">{error === "duplicate" ? (en ? "Identifier already exists." : "知识库标识已存在，请换一个。") : (en ? "Operation failed. Refresh or check your input and retry." : "操作失败，请刷新或检查填写内容后重试。")}</p> : null}
     {!ready && !error ? <p role="status">{en ? "Loading…" : "加载中…"}</p> : null}
     {ready ? <>
@@ -81,5 +80,5 @@ export default function KnowledgeBasesPage() {
         finally { setDeleteBusy(false); }
       }}>{deleteBusy ? (en ? "Deleting…" : "删除中…") : (en ? "Permanently delete" : "确认删除")}</button></div>
     </Modal> : null}
-  </main>;
+  </AdminPage>;
 }

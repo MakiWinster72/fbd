@@ -1,0 +1,124 @@
+/* Shared reading rhythm: quiet chrome, clear actions, comfortable source text.
+   This layer follows the existing redesign without changing viewport geometry. */
+@layer typography {
+  :root {
+    --muted: #647580;
+    --line: #e2e8eb;
+  }
+
+  body { line-height: 1.6; }
+  input, select, textarea, button { font-family: var(--sans); }
+  h1, h2, h3 { text-wrap: balance; }
+
+  .admin-header h1,
+  .account-header h1,
+  .conversation-heading h1 {
+    font-family: var(--sans);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.35;
+  }
+
+  .admin-header h1 { font-size: clamp(24px, 2.4vw, 30px); }
+  .admin-header {
+    padding: 20px 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .admin-header p:last-child {
+    max-width: 64ch;
+    margin: 10px 0 0;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--muted);
+  }
+  /* These kickers repeat the adjacent heading; retain step labels in intake. */
+  .admin-header .section-kicker,
+  .admin-section-heading .section-kicker,
+  .evidence-heading .section-kicker,
+  .mobile-sheet-header .section-kicker { display: none; }
+
+  .admin-section-heading h2,
+  .profile-section h2,
+  .intake-panel h2 {
+    font: 600 18px/1.5 var(--sans);
+    letter-spacing: -0.015em;
+  }
+  .admin-section-heading > p:last-child:not(.section-kicker) {
+    max-width: 68ch;
+    font-size: 13px;
+    line-height: 1.75;
+    color: var(--muted);
+  }
+  .admin-navigation { padding: 0 0 12px; gap: 4px; }
+  .admin-navigation a { font-size: 14px; font-weight: 500; }
+  .profile-section { box-shadow: none; }
+  .model-profile-card h3 { font: 600 16px/1.5 var(--sans); }
+  .profile-fields label,
+  .create-profile-form label { font-size: 13px; line-height: 1.6; }
+
+  .eyebrow, .section-kicker, .message-label {
+    font-family: var(--sans);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .viewport-workspace .conversation-heading h1 { font-size: 18px; }
+  .viewport-workspace .message-body {
+    font-size: 15px;
+    line-height: 1.85;
+    overflow-wrap: anywhere;
+  }
+  .viewport-workspace .message.user .message-body {
+    font-family: var(--sans);
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.75;
+  }
+  .viewport-workspace .message-label {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .viewport-workspace .message-evidence-line {
+    margin-top: 14px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .viewport-workspace .workspace-nav-title { font-size: 13px; }
+  .viewport-workspace .workspace-nav-history small,
+  .viewport-workspace .workspace-account-name > span { font-size: 12px; }
+  .viewport-workspace .quick-questions { gap: 8px; }
+  .viewport-workspace .quick-questions button {
+    padding: 9px 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    background: transparent;
+    border: 1px solid var(--line);
+    box-shadow: none;
+    white-space: normal;
+    text-align: left;
+  }
+  .viewport-workspace .quick-questions button:hover {
+    background: #f0f5f3;
+    border-color: #b7cec5;
+  }
+  .evidence-heading h2 { font: 600 17px/1.5 var(--sans); }
+  .evidence-empty p { max-width: 30ch; line-height: 1.75; }
+  .login-story h1 {
+    font-family: var(--sans);
+    font-size: clamp(28px, 3vw, 40px);
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: -0.035em;
+  }
+  .login-intro { font-size: 14px; line-height: 1.8; }
+
+  @media (max-width: 640px) {
+    .admin-header { padding: 16px 0; }
+    .admin-header h1 { font-size: 24px; }
+    .admin-navigation a { padding-inline: 12px; }
+    .viewport-workspace .message-body { font-size: 15px; }
+  }
+}

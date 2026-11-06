@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AdminNav } from "@/components/admin-nav";
+import { AdminPage } from "../../../components/admin-page";
 import { useLanguage } from "@/components/language-provider";
 import {
   getCurrentUser,
@@ -111,27 +111,19 @@ export default function AdminUsersPage() {
     );
 
   return (
-    <main
-      id="main-content"
-      tabIndex={-1}
-      className="admin-shell user-management"
-    >
-      <header className="admin-header">
-        <div>
-          <p className="section-kicker">{t("账号与授权")}</p>
-          <h1>{t("用户管理")}</h1>
-          <p>{t("普通用户只能访问管理员明确授权的知识库。")}</p>
-        </div>
-        <button
+    <AdminPage
+      title={t("用户管理")}
+      description={t("普通用户只能访问管理员明确授权的知识库。")}
+      className="user-management"
+      actions={<button
           className="primary-action"
           type="button"
           disabled={basesStatus !== "ready"}
           onClick={() => setDialog({ kind: "create" })}
         >
           {t("新增用户")}
-        </button>
-      </header>
-      <AdminNav />
+        </button>}
+    >
       {basesStatus === "error" ? (
         <p className="admin-error" role="alert">
           {t("知识库加载失败，授权操作暂不可用")}：{t(basesError)}{" "}
@@ -243,6 +235,6 @@ export default function AdminUsersPage() {
           }
         />
       ) : null}
-    </main>
+    </AdminPage>
   );
 }

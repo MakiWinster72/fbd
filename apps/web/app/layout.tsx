@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "bootstrap-icons/font/bootstrap-icons.css";
 import "./globals.css";
+import "./typography.css";
+import "./site-layout.css";
 import { LanguageProvider } from "@/components/language-provider";
 
 export const metadata: Metadata = {

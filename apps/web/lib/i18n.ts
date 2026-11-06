@@ -124,6 +124,33 @@ const english: Record<string, string> = {
   "已选择": "Selected", "个文件": "files", "，跳过": "; skipped", "个重复项": "duplicates", "。文件仅在本地清单中，尚未上传。": ". Files are still local and have not been uploaded.",
 };
 
+// Keep lookup keys stable for API errors and existing components. Display copy
+// is deliberately shorter in both languages; warnings retain their full meaning.
+const conciseCopy: Record<string, readonly [string, string]> = {
+  "请在左侧选择对应的 '知识库', 然后进行提问。我会严格依据资料回答，并标出原始文件和页码。": ["选择知识库，开始提问。每个答案都附有资料来源。", "Choose a knowledge base and ask a question. Answers include sources."],
+  "从材料中寻找答案": ["向资料提问", "Ask your documents"],
+  "回答仅来自已入库文档，引用编号可定位到右侧证据。": ["点击引用，查看原文。", "Select a citation to read the source."],
+  "答案的依据会显示在这里": ["在这里查看原文", "Your sources appear here"],
+  "提问后可查看文件名、页码、相关度和命中的原文片段。": ["提问后，查看引用的文件、页码和片段。", "Ask a question to see cited files, pages, and excerpts."],
+  "正在检索材料并核对引用…": ["正在查找并核对资料…", "Finding and checking sources…"],
+  "点击编号查看原文片段": ["点击引用查看原文", "Select a citation to read more"],
+  "例如：相关制度规定了哪些流程？": ["输入问题…", "Ask a question…"],
+  "使用管理员分配的账号登录。模型凭据和知识库配置仅在管理员后台维护。": ["使用管理员提供的账号登录。", "Sign in with the account provided by your administrator."],
+  "用户与知识库权限": ["用户管理", "User management"],
+  "模型配置中心": ["模型设置", "Model settings"],
+  "模型密钥仅保存在后端，普通用户无法查看或选择模型。": ["管理回答、检索与排序模型。密钥仅保存在服务端。", "Manage chat, search, and reranking models. Keys stay on the server."],
+  "切换时会在后台重建独立 Collection，成功后再原子切换。": ["更换模型会重建索引，完成后自动切换。", "Changing models rebuilds the index and switches when ready."],
+  "启用后先从 Milvus 召回候选，再按问题与文本的相关性重排。支持本地 Ollama Qwen3、TEI 和 Jina/SiliconFlow；8GB 显存环境会在重排后卸载本地模型，再加载对话模型。服务异常时自动降级到向量顺序。": ["按相关性优化检索结果。服务不可用时自动使用原始检索顺序。", "Improve result relevance. If unavailable, search uses the original ranking."],
+  "文件导入流程": ["导入文件", "Import documents"],
+  "先核对文件、解析方式和目标知识库，再交给后台完成解析与向量化。": ["选择文件和知识库，其余交给后台处理。", "Choose files and a knowledge base. Processing runs in the background."],
+  "支持多选；浏览器只读取文件名称和大小，尚未上传。": ["可选择多个文件，确认后上传。", "Select multiple files, then confirm to upload."],
+  "选择文件后，这里会逐项显示格式检查、大小和导入状态。": ["选择的文件会显示在这里。", "Your selected files will appear here."],
+  "自动模式优先版面解析，空页回退到 PDF 文本层。": ["自动解析版面，空页使用文本层。", "Parse layouts automatically, using the text layer for empty pages."],
+  "清单检查完成。确认目标知识库和解析设置后即可导入。": ["文件已就绪，确认设置后开始导入。", "Files are ready. Confirm settings to start."],
+};
+
 export function translate(locale: Locale, text: string): string {
+  const copy = conciseCopy[text];
+  if (copy) return copy[locale === "en" ? 1 : 0];
   return locale === "en" ? english[text] ?? text : text;
 }

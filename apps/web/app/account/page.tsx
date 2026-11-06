@@ -9,6 +9,7 @@ import {
   type CurrentUser,
 } from "@/lib/api";
 import { useLanguage } from "@/components/language-provider";
+import "./account.css";
 
 export default function AccountPage() {
   const { locale, changeLocale, saving, error: languageError } = useLanguage();
@@ -46,7 +47,14 @@ export default function AccountPage() {
   return (
     <main id="main-content" tabIndex={-1} className="account-page">
       <header className="account-header">
-        <h1>{en ? "User center" : "用户中心"}</h1>
+        <div>
+          <h1>{en ? "Account settings" : "账户设置"}</h1>
+          <p>{en ? "Manage your profile, preferences and sign-in security." : "管理个人资料、语言偏好与登录安全。"}</p>
+        </div>
+        {user ? <div className="account-identity">
+          <span className="account-avatar" aria-hidden="true">{(user.display_name || user.username).slice(0, 1).toUpperCase()}</span>
+          <div><strong>{user.display_name || user.username}</strong><span>{user.role === "admin" ? (en ? "Administrator" : "管理员") : (en ? "Member" : "普通用户")}</span></div>
+        </div> : null}
       </header>
       {error === "load" ? (
         <p className="form-error" role="alert">
@@ -57,9 +65,7 @@ export default function AccountPage() {
         <div className="account-sections">
           <section className="account-section" aria-labelledby="profile-title">
             <div className="account-section-heading">
-              <span className="section-number" aria-hidden="true">
-                01
-              </span>
+              <i className="bi bi-person" aria-hidden="true" />
               <h2 id="profile-title">{en ? "Personal profile" : "个人资料"}</h2>
             </div>
             <div className="account-section-content">
@@ -138,9 +144,7 @@ export default function AccountPage() {
           </section>
           <section className="account-section" aria-labelledby="language-title">
             <div className="account-section-heading">
-              <span className="section-number" aria-hidden="true">
-                02
-              </span>
+              <i className="bi bi-translate" aria-hidden="true" />
               <h2 id="language-title">
                 {en ? "Display language" : "显示语言"}
               </h2>
@@ -191,14 +195,13 @@ export default function AccountPage() {
             aria-labelledby="security-title"
           >
             <div className="account-section-heading">
-              <span className="section-number" aria-hidden="true">
-                03
-              </span>
+              <i className="bi bi-shield-lock" aria-hidden="true" />
               <h2 id="security-title">
                 {en ? "Sign-in security" : "登录安全"}
               </h2>
             </div>
             <div className="account-section-content">
+              <p className="account-security-note">{en ? "Changing your password signs you out. Use your new password to sign in again." : "修改密码后将退出登录，下次请使用新密码登录。"}</p>
               <form
                 aria-busy={busy === "password"}
                 onSubmit={async (event) => {

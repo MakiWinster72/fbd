@@ -1,0 +1,92 @@
+/* Geometry lives here; typography and theme remain in their own layers. */
+@layer layout {
+  :root {
+    --page-max: 1200px;
+    --page-gutter: clamp(16px, 3vw, 40px);
+    --page-block: clamp(24px, 3vw, 40px);
+    --section-gap: 24px;
+    --panel-padding: clamp(16px, 2vw, 24px);
+    --reading-width: 840px;
+  }
+
+  .site-masthead {
+    padding-inline: max(var(--page-gutter), calc((100% - var(--page-max)) / 2));
+  }
+
+  .admin-shell {
+    width: min(var(--page-max), calc(100% - 2 * var(--page-gutter)));
+    max-width: var(--page-max);
+    margin: var(--page-block) auto;
+    padding: 0;
+    min-width: 0;
+  }
+
+  .admin-shell .admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px 24px;
+    padding: 0;
+    margin: 0 0 24px;
+  }
+
+  .page-heading-copy { min-width: 0; flex: 1 1 280px; }
+  .page-heading-copy h1 { margin: 0; }
+  .page-heading-copy > p { margin: 8px 0 0; max-width: 70ch; }
+  .page-heading-actions { flex: 0 0 auto; }
+
+  .admin-shell > .admin-navigation {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 4px;
+    margin: 0 0 var(--section-gap);
+    padding: 0 0 12px;
+    scrollbar-width: thin;
+  }
+  .admin-shell > .admin-navigation a { flex: 0 0 auto; white-space: nowrap; }
+
+  .admin-content { display: grid; gap: var(--section-gap); min-width: 0; }
+  .admin-content > * { min-width: 0; margin-block: 0; }
+  .admin-content > .profile-section { padding: var(--panel-padding); }
+  .admin-content > .create-profile-form { padding: var(--panel-padding); }
+  .admin-section-heading { margin-bottom: 20px; }
+  .admin-content .profile-section > .model-profile-card + .model-profile-card { margin-top: 16px; }
+  .kb-page .kb-create-panel { padding: 12px var(--panel-padding); }
+  .kb-page .kb-create-form { padding: 16px 0 0; }
+
+  .account-page {
+    width: min(880px, calc(100% - 2 * var(--page-gutter)));
+    max-width: 880px;
+    margin: var(--page-block) auto;
+    padding: var(--panel-padding);
+  }
+  .account-header { justify-content: space-between; padding: 0 0 24px; }
+  .account-sections { gap: var(--section-gap); }
+
+  .login-shell { padding: var(--page-block) var(--page-gutter); }
+  .login-card { width: min(1040px, 100%); margin-inline: auto; }
+  .login-story, .login-form { padding: clamp(24px, 4vw, 48px); min-width: 0; }
+
+  /* The workbench remains edge-to-edge, with matching transcript/composer axes. */
+  .viewport-workspace .transcript {
+    padding-inline: max(24px, calc((100% - var(--reading-width)) / 2));
+  }
+  .viewport-workspace .composer-zone {
+    padding-inline: max(24px, calc((100% - var(--reading-width)) / 2));
+  }
+  .viewport-workspace .composer { max-width: var(--reading-width); }
+
+  @media (max-width: 1000px) {
+    .viewport-workspace .transcript { padding-inline: 16px; }
+    .viewport-workspace .composer-zone { padding-inline: 12px; }
+  }
+  @media (max-width: 600px) {
+    :root { --section-gap: 20px; }
+    .admin-shell .admin-header { margin-bottom: 20px; }
+    .page-heading-actions { width: 100%; }
+    .page-heading-actions > button { width: 100%; }
+    .admin-shell > .admin-navigation a { padding-inline: 12px; }
+  }
+}

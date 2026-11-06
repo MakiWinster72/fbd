@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { AdminNav } from "@/components/admin-nav";
+import { AdminPage } from "../../../components/admin-page";
 import { useLanguage } from "@/components/language-provider";
 import {
   activateChatProfile,
@@ -200,12 +200,11 @@ export default function AdminModelsPage() {
   if (!ready) return <main id="main-content" tabIndex={-1} className="auth-status"><span className="auth-spinner" /><p>{t(error || "正在验证管理员权限…")}</p></main>;
 
   return (
-    <main id="main-content" tabIndex={-1} className="admin-shell">
-      <header className="admin-header">
-        <div><p className="section-kicker">{t("管理工作台")}</p><h1>{t("模型配置中心")}</h1><p>{t("模型密钥仅保存在后端，普通用户无法查看或选择模型。")}</p></div>
-        <button className="primary-action" type="button" aria-expanded={showCreate} aria-controls="create-model" onClick={() => setShowCreate((value) => !value)}>{t(showCreate ? "取消新增" : "新增模型配置")}</button>
-      </header>
-      <AdminNav />
+    <AdminPage
+      title={t("模型配置中心")}
+      description={t("模型密钥仅保存在后端，普通用户无法查看或选择模型。")}
+      actions={<button className="primary-action" type="button" aria-expanded={showCreate} aria-controls="create-model" onClick={() => setShowCreate((value) => !value)}>{t(showCreate ? "取消新增" : "新增模型配置")}</button>}
+    >
 
       {error ? <p className="admin-error" role="alert">{t(error)}</p> : null}
       {job ? (
@@ -256,6 +255,6 @@ export default function AdminModelsPage() {
       <section className="profile-section"><div className="admin-section-heading"><p className="section-kicker">{t("回答生成")}</p><h2>{t("对话模型")}</h2></div>{profiles.filter((item) => item.purpose === "chat").map((profile) => <ProfileCard key={profile.id} profile={profile} onChanged={loadProfiles} onJob={setJob} />)}</section>
       <section className="profile-section"><div className="admin-section-heading"><p className="section-kicker">{t("语义检索")}</p><h2>{t("Embedding 模型")}</h2><p>{t("切换时会在后台重建独立 Collection，成功后再原子切换。")}</p></div>{profiles.filter((item) => item.purpose === "embedding").map((profile) => <ProfileCard key={profile.id} profile={profile} onChanged={loadProfiles} onJob={setJob} />)}</section>
       <section className="profile-section"><div className="admin-section-heading"><p className="section-kicker">{t("相关性排序")}</p><h2>{t("重排序模型")}</h2><p>{t("启用后先从 Milvus 召回候选，再按问题与文本的相关性重排。支持本地 Ollama Qwen3、TEI 和 Jina/SiliconFlow；8GB 显存环境会在重排后卸载本地模型，再加载对话模型。服务异常时自动降级到向量顺序。")}</p></div>{profiles.filter((item) => item.purpose === "reranker").map((profile) => <ProfileCard key={profile.id} profile={profile} onChanged={loadProfiles} onJob={setJob} />)}{profiles.every((item) => item.purpose !== "reranker") ? <p className="empty-profile-note">{t("尚未配置重排序模型。系统当前直接使用向量检索顺序。")}</p> : null}</section>
-    </main>
+    </AdminPage>
   );
 }
